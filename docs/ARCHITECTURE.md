@@ -40,7 +40,7 @@ Crisis language bypasses the model entirely and returns a direct safety response
 
 - **Vent call:** nothing is stored. The caller may choose "Keep it as a page".
 - **Journal call:** `POST /api/journal` sends the turns to Gemma 4 E4B with a JSON schema (Ollama structured outputs). Only the caller's words count as facts. The page is embedded locally with `nomic-embed-text` and saved.
-- **Durable writing (optional):** with `TEMPORAL_ADDRESS` set, the same three steps (`draftEntry` → `embedEntry` → `saveEntry` in `src/lib/journal.ts`) run as the Temporal workflow `writeJournalPage` (`src/temporal/`, task queue `vent-journal`, worker `pnpm worker`). Each step is a retried activity, the turns are the workflow input and the workflow id is derived from the request, so a page survives Ollama timeouts and worker restarts and a retried request never writes twice. The API waits up to 110 s for the result and falls back to the direct path when Temporal or its worker is unavailable.
+- **Durable writing:** the three steps (`draftEntry` → `embedEntry` → `saveEntry` in `src/lib/journal.ts`) run as the Temporal workflow `writeJournalPage` (`src/temporal/`, task queue `vent-journal`, worker `pnpm worker`). Each step is a retried activity, the turns are the workflow input and the workflow id is derived from the request, so a page survives Ollama timeouts and worker restarts and a retried request never writes twice. The API waits up to 110 s for the result and falls back to the direct path when Temporal or its worker is unavailable.
 
 ## Memory
 

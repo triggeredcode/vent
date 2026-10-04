@@ -2,7 +2,7 @@
  * Temporal worker for VENT's durable journal pipeline (optional).
  *   temporal server start-dev      # Temporal dev server + UI on http://localhost:8233
  *   pnpm worker                    # this file
- * Then set TEMPORAL_ADDRESS=localhost:7233 for the app.
+ * The app uses localhost:7233 by default (TEMPORAL_ADDRESS overrides it; "off" disables Temporal).
  */
 import path from "node:path";
 import { NativeConnection, Worker } from "@temporalio/worker";

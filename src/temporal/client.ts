@@ -4,8 +4,9 @@ import type { JournalEntry } from "../lib/types";
 import { TASK_QUEUE, type WriteJournalInput } from "./shared";
 import type { writeJournalPage } from "./workflows";
 
-/** Temporal is optional: it is only used when TEMPORAL_ADDRESS is set (e.g. localhost:7233). */
-export const temporalEnabled = () => Boolean(process.env.TEMPORAL_ADDRESS?.trim());
+/** Journal pages are written through Temporal by default (localhost:7233); TEMPORAL_ADDRESS=off disables it. */
+export const temporalAddress = () => process.env.TEMPORAL_ADDRESS?.trim() || "localhost:7233";
+export const temporalEnabled = () => temporalAddress().toLowerCase() !== "off";
 
 const namespace = () => process.env.TEMPORAL_NAMESPACE ?? "default";
 
@@ -18,7 +19,7 @@ export class StillWritingError extends Error {}
 const cache = globalThis as typeof globalThis & { __ventTemporal?: Promise<Client> };
 
 function getClient() {
-  cache.__ventTemporal ??= Connection.connect({ address: process.env.TEMPORAL_ADDRESS!.trim(), connectTimeout: "3s" })
+  cache.__ventTemporal ??= Connection.connect({ address: temporalAddress(), connectTimeout: "3s" })
     .then((connection) => new Client({ connection, namespace: namespace() }))
     .catch((error) => {
       cache.__ventTemporal = undefined;

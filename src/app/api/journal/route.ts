@@ -12,10 +12,10 @@ export async function GET() {
   return NextResponse.json({ entries: await store.list(), storage: store.kind });
 }
 
-/** Optional durable path: a Temporal workflow (see src/temporal). Returns undefined when Temporal can't take the job. */
+/** Durable path: a Temporal workflow (see src/temporal). Returns undefined when Temporal can't take the job. */
 async function writeWithTemporal(turns: CallTurn[], date: string, keepTranscript: boolean, requestId?: string): Promise<JournalEntry | undefined> {
-  if (!process.env.TEMPORAL_ADDRESS?.trim()) return undefined;
-  // Loaded lazily so the default path never touches the Temporal client.
+  if (process.env.TEMPORAL_ADDRESS?.trim().toLowerCase() === "off") return undefined;
+  // Loaded lazily so the direct fallback never touches the Temporal client.
   const { writeJournalPageDurably, TemporalUnavailableError, StillWritingError } = await import("@/temporal/client");
   try {
     const { entry, workflowId } = await writeJournalPageDurably({ turns, date, keepTranscript }, { requestId, waitMs: 110_000 });

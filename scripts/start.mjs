@@ -92,17 +92,24 @@ else if (await has("uv")) {
   await run("bash", ["voice/start.sh", "--bg"]);
 } else warn("uv isn't installed (https://docs.astral.sh/uv/) — VENT will fall back to your browser's voice.");
 
-// 3. Temporal (optional)
-if (env.TEMPORAL_ADDRESS) {
+// 3. Temporal: journal pages are written by a durable workflow
+const temporalAddress = (env.TEMPORAL_ADDRESS ?? "localhost:7233").trim();
+if (temporalAddress.toLowerCase() !== "off") {
   step("Temporal (durable journal writing)");
-  const [host, temporalPort] = env.TEMPORAL_ADDRESS.split(":");
-  if (!(await portOpen(Number(temporalPort ?? 7233), host === "localhost" ? "127.0.0.1" : host))) {
+  const [host, rawPort] = temporalAddress.split(":");
+  const temporalPort = Number(rawPort ?? 7233);
+  const temporalHost = host === "localhost" ? "127.0.0.1" : host;
+  if (!(await portOpen(temporalPort, temporalHost))) {
+    if (!(await has("temporal")) && await has("brew")) {
+      console.log("  installing the Temporal CLI (first run only)…");
+      await run("brew", ["install", "temporal"]);
+    }
     if (await has("temporal")) {
       background("temporal", ["server", "start-dev", "--db-filename", path.join(root, ".vent-data", "temporal.db")], "temporal.log");
-      await until(() => portOpen(Number(temporalPort ?? 7233)), 30, "Temporal");
-    } else warn("Temporal CLI not found (brew install temporal) — journal pages are written directly instead.");
+      await until(() => portOpen(temporalPort, temporalHost), 30, "Temporal");
+    } else warn("Temporal CLI not found (https://docs.temporal.io/cli) — pages are written directly until it's installed.");
   }
-  if (await portOpen(Number(temporalPort ?? 7233))) {
+  if (await portOpen(temporalPort, temporalHost)) {
     background("pnpm", ["worker"], "worker.log");
     ok("dev server + worker running · UI at http://localhost:8233");
   }
