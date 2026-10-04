@@ -7,7 +7,7 @@ export const maxDuration = 60;
 
 const words = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter(Boolean);
 
-/** A short "turn" made only of words Haan just said is its own voice leaking back through the speakers. */
+/** A short "turn" made only of words VENT just said is its own voice leaking back through the speakers. */
 function isEcho(transcript: string, history: CallTurn[]) {
   const lastVent = [...history].reverse().find((turn) => turn.speaker === "vent" && turn.text);
   if (!lastVent) return false;

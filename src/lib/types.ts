@@ -34,6 +34,8 @@ export type CallMode = "vent" | "journal";
 
 export type ListenerAction = "silence" | "acknowledge" | "follow_up" | "clarify" | "reflect_briefly";
 
+export type ListenerTone = "fired_up" | "heavy" | "tense" | "bright" | "calm";
+
 export interface CallTurn {
   speaker: "you" | "vent";
   text: string;

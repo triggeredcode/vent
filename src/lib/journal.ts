@@ -43,7 +43,7 @@ export function entryFromExtraction(extracted: Partial<ExtractedDay>, turns: Cal
     thingsToRemember: clean(extracted.things_to_remember, 5),
     summary: extracted.summary?.trim() || caller.slice(0, 200),
     journal: extracted.journal?.trim() || caller,
-    transcript: turns.map((turn) => `${turn.speaker === "you" ? "You" : "Haan"}: ${turn.text}`).join("\n"),
+    transcript: turns.map((turn) => `${turn.speaker === "you" ? "You" : "VENT"}: ${turn.text}`).join("\n"),
     createdAt: new Date().toISOString(),
   };
 }

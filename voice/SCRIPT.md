@@ -11,9 +11,9 @@ Pause naturally at the line breaks. It takes about 35–40 seconds.
 >
 > Hmm. Okay… and then what happened?
 >
-> Acha, phir kya hua? Arre yaar, that's so unfair.
+> No way. Okay, so what did you say? Honestly, that's so unfair.
 >
-> Haan, haan, I'm listening.
+> Yeah, yeah. I'm listening.
 >
 > Honestly? Chai and a long walk by the lake sounds perfect right now.
 >

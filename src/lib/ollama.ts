@@ -1,6 +1,6 @@
 import { crisisPattern, crisisResponse, extractionPrompt, listenerSystemPrompt, memoryPrompt, transcriptionPrompt } from "./prompts";
 import { recordUsage, traced } from "./telemetry";
-import type { CallMode, CallTurn, ListenerAction } from "./types";
+import type { CallMode, CallTurn, ListenerAction, ListenerTone } from "./types";
 
 const baseUrl = () => (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/$/, "");
 /** Fast ears: transcribes each spoken turn. */
@@ -94,7 +94,7 @@ export async function getModelStatus(mode?: CallMode) {
     const required = [...new Set([voiceModel(), listenerModel(), journalModel(), embeddingModel()])];
     const missing = required.filter((model) => !has(model));
     const live = [...new Set([voiceModel(), listenerModel()])];
-    // Both call models must be in memory before Haan "picks up"; the journal model can load later.
+    // Both call models must be in memory before VENT "picks up"; the journal model can load later.
     await Promise.all(live.filter((model) => !missing.includes(model)).map((model) =>
       (model === listenerModel() && mode ? primeListener(mode) : warm(model)).catch(() => undefined)));
     if (!missing.includes(journalModel()) && !live.includes(journalModel())) void warm(journalModel()).catch(() => undefined);
@@ -138,9 +138,11 @@ export async function transcribeAudio(audio: string, format: "wav" | "mp3" = "wa
 
 const adviceSmell = /\b(you should|you could try|have you tried|try to|make sure to|it'?s important to|consider (talking|trying))\b/i;
 
-export async function listen(history: CallTurn[], mode: CallMode): Promise<{ action: ListenerAction; text: string }> {
+const tones: ListenerTone[] = ["fired_up", "heavy", "tense", "bright", "calm"];
+
+export async function listen(history: CallTurn[], mode: CallMode): Promise<{ action: ListenerAction; tone: ListenerTone; text: string }> {
   const latest = history.at(-1)?.text ?? "";
-  if (crisisPattern.test(latest)) return { action: "reflect_briefly", text: crisisResponse };
+  if (crisisPattern.test(latest)) return { action: "reflect_briefly", tone: "heavy", text: crisisResponse };
 
   const messages: ChatMessage[] = [
     { role: "system", content: listenerSystemPrompt(mode) },
@@ -150,15 +152,16 @@ export async function listen(history: CallTurn[], mode: CallMode): Promise<{ act
   ];
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const { content } = await chat({ model: listenerModel(), messages, format: "json", temperature: 0.7 + attempt * 0.15, maxTokens: 60, span: "listen" });
-    const parsed = parseJson<{ action: ListenerAction; text: string }>(content);
+    const { content } = await chat({ model: listenerModel(), messages, format: "json", temperature: 0.7 + attempt * 0.15, maxTokens: 70, span: "listen" });
+    const parsed = parseJson<{ action: ListenerAction; tone: ListenerTone; text: string }>(content);
     const text = (parsed.text ?? "").replace(/\s+/g, " ").trim();
     const action: ListenerAction = parsed.action && ["silence", "acknowledge", "follow_up", "clarify", "reflect_briefly"].includes(parsed.action) ? parsed.action : "acknowledge";
-    if (action === "silence" || !text) return { action: "silence", text: "" };
+    const tone: ListenerTone = parsed.tone && tones.includes(parsed.tone) ? parsed.tone : "calm";
+    if (action === "silence" || !text) return { action: "silence", tone, text: "" };
     if (adviceSmell.test(text) && attempt === 0) continue;
-    return { action, text };
+    return { action, tone, text };
   }
-  return { action: "silence", text: "" };
+  return { action: "silence", tone: "calm", text: "" };
 }
 
 const stringList = { type: "array", items: { type: "string" } };
@@ -200,7 +203,7 @@ export interface ExtractedDay {
 }
 
 export async function extractDay(turns: CallTurn[], today: string): Promise<Partial<ExtractedDay>> {
-  const conversation = turns.map((turn) => `${turn.speaker === "you" ? "CALLER" : "HAAN"}: ${turn.text}`).join("\n");
+  const conversation = turns.map((turn) => `${turn.speaker === "you" ? "CALLER" : "VENT"}: ${turn.text}`).join("\n");
   const { content } = await chat({
     model: journalModel(),
     messages: [
