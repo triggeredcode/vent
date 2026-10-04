@@ -34,7 +34,9 @@ const START_FRAMES = 2;
 const END_SILENCE_FRAMES = 11; // ~470 ms of quiet ends a turn
 const MIN_TURN_SECONDS = 0.45;
 const MAX_TURN_SECONDS = 25;
-const BARGE_IN_FRAMES = 4;
+// Speakers bleed into the mic, so VENT never listens to itself: the mic is deaf while
+// VENT speaks and for a short echo tail afterwards. Tap the mascot to cut VENT off.
+const ECHO_TAIL_MS = 450;
 
 function formatTime(total: number) {
   return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
@@ -80,6 +82,7 @@ export function CallScreen({ mode, onEnd }: { mode: CallMode; onEnd: (result: Ca
   const mutedRef = useRef(false);
   const speakerRef = useRef(true);
   const stopPlaybackRef = useRef<() => void>(() => undefined);
+  const deafUntilRef = useRef(0);
   const levelRef = useRef<HTMLDivElement>(null);
   const liveRef = useRef(false);
   const secondsRef = useRef(0);
@@ -127,6 +130,7 @@ export function CallScreen({ mode, onEnd }: { mode: CallMode; onEnd: (result: Ca
         window.speechSynthesis.speak(utterance);
       });
     } finally {
+      deafUntilRef.current = performance.now() + ECHO_TAIL_MS;
       speakingRef.current = false;
       stopPlaybackRef.current = () => undefined;
       setCaption("");
@@ -187,7 +191,6 @@ export function CallScreen({ mode, onEnd }: { mode: CallMode; onEnd: (result: Ca
     const preRoll: Float32Array[] = [];
     let loudFrames = 0;
     let quietFrames = 0;
-    let bargeFrames = 0;
     let noiseFloor = 0.006;
 
     const flush = (sampleRate: number) => {
@@ -229,20 +232,9 @@ export function CallScreen({ mode, onEnd }: { mode: CallMode; onEnd: (result: Ca
           levelRef.current?.style.setProperty("--level", String(Math.min(1, rms * 14)));
           if (mutedRef.current) { chunks.length = 0; recordingRef.current = false; loudFrames = 0; return; }
 
-          if (speakingRef.current) {
-            // Barge-in: if they clearly start talking over VENT, VENT stops and listens.
-            if (rms > Math.max(0.05, noiseFloor * 9)) {
-              bargeFrames += 1;
-              preRoll.push(samples);
-              if (bargeFrames >= BARGE_IN_FRAMES) {
-                stopPlaybackRef.current();
-                chunks.push(...preRoll.splice(0));
-                recordingRef.current = true;
-                speechCountRef.current += 1;
-                bargeFrames = 0;
-                setPhase("hearing");
-              }
-            } else { bargeFrames = 0; preRoll.length = 0; }
+          if (speakingRef.current || performance.now() < deafUntilRef.current) {
+            preRoll.length = 0;
+            loudFrames = 0;
             return;
           }
 
@@ -312,7 +304,7 @@ export function CallScreen({ mode, onEnd }: { mode: CallMode; onEnd: (result: Ca
     </header>
 
     <div className="call-body">
-      <div className={`listener-orb ${muted ? "muted" : ""} ${phase} gesture-${gesture}`} ref={levelRef}>
+      <div className={`listener-orb ${muted ? "muted" : ""} ${phase} gesture-${gesture}`} ref={levelRef} onClick={() => stopPlaybackRef.current()} role="button" tabIndex={-1} aria-label="Tap to interrupt VENT">
         <span className="voice-ring" /><span className="voice-ring" />
         <Image src="/vent-listener.png" alt="VENT listener" width={300} height={300} priority />
       </div>

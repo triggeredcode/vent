@@ -22,10 +22,10 @@ export function HomeScreen({ entries, startCall, openEntry }: { entries: Journal
       </button>
     </section>
     <section className="editorial-actions">
-      <button className="journal-feature" onClick={() => startCall("journal")}>
-        <span className="feature-number">01</span>
-        <span><small>CAPTURE TODAY</small><strong>Make a<br />journal page</strong></span>
-        <Icon name="arrow" />
+      <button className="journal-feature" onClick={() => startCall("journal")} aria-label="Call to make today's journal page">
+        <span className="feature-lines" aria-hidden="true"><i /><i /><i /></span>
+        <span className="feature-copy"><small>CAPTURE TODAY</small><strong>Make a<br />journal page</strong></span>
+        <span className="feature-phone"><Icon name="phone" /></span>
       </button>
       {latest
         ? <button className="day-feature" style={{ background: latest.mood.color, color: inkFor(latest.mood.color) }} onClick={() => openEntry(latest)}>

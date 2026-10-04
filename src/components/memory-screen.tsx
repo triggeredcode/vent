@@ -39,6 +39,10 @@ export function MemoryScreen({ entries, openEntry }: { entries: JournalEntry[]; 
     }
   };
 
+  const people = [...entries.flatMap((entry) => entry.people).reduce((counts, name) => counts.set(name, (counts.get(name) ?? 0) + 1), new Map<string, number>())]
+    .sort((a, b) => b[1] - a[1]).slice(0, 6);
+  const peopleTints = ["#f0c947", "#e99377", "#a8c8a0", "#c7b3dc", "#98bfd1", "#f8e9b3"];
+
   const first = result?.dates[0] && entries.find((entry) => entry.id === result.dates[0].id);
   const tone = first ? first.mood.color : "#c7b3dc";
 
@@ -78,6 +82,13 @@ export function MemoryScreen({ entries, openEntry }: { entries: JournalEntry[]; 
     {!result && !asking && <section className="memory-index">
       <span className="eyebrow">TRY ASKING</span>
       {suggestions.map((item, index) => <button key={item} onClick={() => void ask(item)}><b>{String(index + 1).padStart(2, "0")}</b><span>{item}</span></button>)}
+    </section>}
+
+    {!result && !asking && people.length > 0 && <section className="people-strip">
+      <span className="eyebrow">PEOPLE IN YOUR PAGES</span>
+      <div>{people.map(([name, count], index) => <button key={name} onClick={() => void ask(`What has been happening with ${name}?`)} style={{ background: peopleTints[index % peopleTints.length] }}>
+        <strong>{name}</strong><small>{count}×</small>
+      </button>)}</div>
     </section>}
   </main>;
 }

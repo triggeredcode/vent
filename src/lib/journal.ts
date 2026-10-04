@@ -8,12 +8,16 @@ const clean = (items: unknown, limit = 8) =>
 
 const capitalise = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 
+const calendarWords = new Set(["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december", "diwali", "holi", "eid", "christmas"]);
+
 /** Gemma likes Title Case; magazine headlines here are sentence case, keeping names intact. */
 function sentenceCase(title: string, names: string[]) {
   const proper = new Set(names.flatMap((name) => name.split(/\s+/)).map((word) => word.toLowerCase()));
   return title.split(/\s+/).map((word, index) => {
     if (index === 0) return capitalise(word);
-    return proper.has(word.replace(/[^\p{L}']/gu, "").toLowerCase()) || /^[A-Z]{2,}$/.test(word) ? word : word.toLowerCase();
+    const bare = word.replace(/[^\p{L}']/gu, "").toLowerCase();
+    if (calendarWords.has(bare)) return capitalise(word.toLowerCase());
+    return proper.has(bare) || /^[A-Z]{2,}$/.test(word) ? word : word.toLowerCase();
   }).join(" ");
 }
 
