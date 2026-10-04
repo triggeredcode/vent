@@ -1,59 +1,88 @@
-import type { JournalEntry } from "./types";
+import { answerQuestion, embed, extractDay, type ExtractedDay } from "./ollama";
+import { displayDateFor, moodFor } from "./mood";
+import { getStore, pageText } from "./store";
+import type { CallTurn, JournalEntry, MemoryAnswer } from "./types";
 
-const lower = (value: string) => value.toLocaleLowerCase();
+const clean = (items: unknown, limit = 8) =>
+  Array.isArray(items) ? [...new Set(items.map((item) => String(item).trim()).filter(Boolean))].slice(0, limit) : [];
 
-export function answerFromEntries(question: string, entries: JournalEntry[]) {
-  const query = lower(question.trim());
-  const tokens = query.replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter(
-    (token) => token.length > 3 && !["what", "when", "where", "have", "feel", "felt", "this", "that", "lately"].includes(token),
-  );
-  const ranked = entries
-    .map((entry) => {
-      const haystack = lower([
-        entry.summary,
-        ...entry.people,
-        ...entry.food,
-        ...entry.places,
-        ...entry.highlights,
-        ...entry.difficultMoments,
-        ...entry.thingsToRemember,
-      ].join(" "));
-      return { entry, score: tokens.reduce((sum, token) => sum + (haystack.includes(token) ? 1 : 0), 0) };
-    })
-    .sort((a, b) => b.score - a.score || b.entry.date.localeCompare(a.entry.date));
-  const matches = ranked.filter(({ score }) => score > 0).slice(0, 2);
+const capitalise = (value: string) => value.charAt(0).toUpperCase() + value.slice(1);
 
-  if (!matches.length) {
-    return { answer: "I couldn't find that in the days saved here yet. Try asking about a person, place, meal, or how a day felt.", dates: [] as string[] };
-  }
-  if (query.includes("rahul")) {
-    const latest = matches[0].entry;
-    return { answer: `You last mentioned Rahul on ${latest.displayDate}. You worked on the demo together, and noted that his interview is on Tuesday.`, dates: [latest.displayDate] };
-  }
-  if (query.includes("better") || query.includes("lighter")) {
-    return { answer: "The clearest lift came from finishing something tangible and taking an evening walk. The first successful voice test also helped the project feel manageable again.", dates: matches.map(({ entry }) => entry.displayDate) };
-  }
-  return { answer: matches.map(({ entry }) => entry.summary).join(" "), dates: matches.map(({ entry }) => entry.displayDate) };
+/** Gemma likes Title Case; magazine headlines here are sentence case, keeping names intact. */
+function sentenceCase(title: string, names: string[]) {
+  const proper = new Set(names.flatMap((name) => name.split(/\s+/)).map((word) => word.toLowerCase()));
+  return title.split(/\s+/).map((word, index) => {
+    if (index === 0) return capitalise(word);
+    return proper.has(word.replace(/[^\p{L}']/gu, "").toLowerCase()) || /^[A-Z]{2,}$/.test(word) ? word : word.toLowerCase();
+  }).join(" ");
 }
 
-export function makeEntryFromTranscript(transcript: string): JournalEntry {
-  const today = new Date();
-  const date = today.toISOString().slice(0, 10);
-  const displayDate = today.toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" });
-  const text = transcript.trim() || "I talked through my day and gave myself a little room to breathe.";
+export function entryFromExtraction(extracted: Partial<ExtractedDay>, turns: CallTurn[], date: string): JournalEntry {
+  const caller = turns.filter((turn) => turn.speaker === "you").map((turn) => turn.text).join(" ").trim();
+  const mood = moodFor(Number(extracted.mood_score) || 3);
+  const arc = Array.isArray(extracted.mood_arc)
+    ? extracted.mood_arc.filter((point) => point?.label).slice(0, 4).map((point) => ({ phase: capitalise(String(point.phase || "").trim()), label: String(point.label).trim().toLowerCase(), emoji: String(point.emoji || "•").trim() }))
+    : [];
   return {
-    id: `${date}-${Date.now()}`,
+    id: `${date}-${Date.now().toString(36)}`,
     date,
-    displayDate,
-    mood: { score: 3, label: "mixed", color: "#f1d58a" },
-    moodArc: [
-      { phase: "Start", label: "carrying a lot", emoji: "😕" },
-      { phase: "After talking", label: "a little clearer", emoji: "😌" },
-    ],
-    people: [], food: [], places: [], healthMentions: [],
-    highlights: ["Made space to talk the day through"],
-    difficultMoments: [], thingsToRemember: [],
-    summary: text.length > 220 ? `${text.slice(0, 217)}…` : text,
-    transcript: text,
+    displayDate: displayDateFor(date),
+    title: sentenceCase(extracted.title?.trim().replace(/[.!]$/, "") || "A day, talked through", [...clean(extracted.people), ...clean(extracted.places), ...clean(extracted.food)]),
+    mood: { score: mood.score, label: mood.label, color: mood.color },
+    moodArc: arc,
+    people: clean(extracted.people),
+    food: clean(extracted.food),
+    places: clean(extracted.places),
+    healthMentions: clean(extracted.health_mentions),
+    highlights: clean(extracted.highlights, 5),
+    difficultMoments: clean(extracted.difficult_moments, 5),
+    thingsToRemember: clean(extracted.things_to_remember, 5),
+    summary: extracted.summary?.trim() || caller.slice(0, 200),
+    journal: extracted.journal?.trim() || caller,
+    transcript: turns.map((turn) => `${turn.speaker === "you" ? "You" : "VENT"}: ${turn.text}`).join("\n"),
+    createdAt: new Date().toISOString(),
+  };
+}
+
+export async function createEntryFromCall(turns: CallTurn[], date: string, keepTranscript: boolean) {
+  const spoken = turns.filter((turn) => turn.text.trim());
+  const extracted = await extractDay(spoken, displayDateFor(date));
+  const entry = entryFromExtraction(extracted, spoken, date);
+  if (!keepTranscript) delete entry.transcript;
+  await getStore().save({ ...entry, embedding: await embed(pageText(entry)) });
+  return entry;
+}
+
+const stopWords = new Set(["what", "when", "where", "which", "have", "with", "this", "that", "about", "did", "was", "were", "the", "and", "my", "me", "i", "a", "an", "of", "to", "in", "on", "how", "do", "does", "last", "show", "days", "day"]);
+
+function keywordScore(question: string, entry: JournalEntry) {
+  const haystack = pageText(entry).toLowerCase();
+  return question.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/)
+    .filter((token) => token.length > 2 && !stopWords.has(token))
+    .reduce((score, token) => score + (haystack.includes(token) ? 1 : 0), 0);
+}
+
+export async function askJournal(question: string, today: string): Promise<MemoryAnswer & { dates: Array<{ id: string; displayDate: string }> }> {
+  const store = getStore();
+  const all = await store.list();
+  if (!all.length) return { answer: "Your journal is still empty. Once you've talked through a day, you can ask about it here.", entryIds: [], dates: [] };
+
+  // Small journals fit entirely in context; larger ones are narrowed by meaning + keywords + recency.
+  let pages = all;
+  if (all.length > 30) {
+    const vector = await embed(question);
+    const semantic = vector ? await store.nearest(vector, 12) : [];
+    const keyword = [...all].sort((a, b) => keywordScore(question, b) - keywordScore(question, a)).slice(0, 10);
+    const ids = new Set([...semantic, ...keyword, ...all.slice(0, 8)].map((entry) => entry.id));
+    pages = all.filter((entry) => ids.has(entry.id));
+  }
+
+  const text = pages.map((entry) => `[id: ${entry.id}] ${pageText(entry)}`).join("\n");
+  const { answer, entryIds } = await answerQuestion(question, text, today);
+  const used = entryIds.map((id) => pages.find((entry) => entry.id === id)).filter((entry): entry is JournalEntry => Boolean(entry));
+  return {
+    answer: answer || "I couldn't find that in your journal.",
+    entryIds: used.map((entry) => entry.id),
+    dates: used.map((entry) => ({ id: entry.id, displayDate: entry.displayDate })),
   };
 }

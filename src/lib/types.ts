@@ -1,4 +1,5 @@
 export type MoodLabel = "bright" | "good" | "mixed" | "low" | "rough";
+export type MoodScore = 1 | 2 | 3 | 4 | 5;
 
 export interface MoodPoint {
   phase: string;
@@ -8,9 +9,11 @@ export interface MoodPoint {
 
 export interface JournalEntry {
   id: string;
+  /** Local calendar date, YYYY-MM-DD. */
   date: string;
   displayDate: string;
-  mood: { score: 1 | 2 | 3 | 4 | 5; label: MoodLabel; color: string };
+  title: string;
+  mood: { score: MoodScore; label: MoodLabel; color: string };
   moodArc: MoodPoint[];
   people: string[];
   food: string[];
@@ -20,14 +23,24 @@ export interface JournalEntry {
   difficultMoments: string[];
   thingsToRemember: string[];
   summary: string;
+  /** The day retold in the caller's own first-person voice. */
+  journal: string;
   transcript?: string;
+  createdAt: string;
 }
 
-export type Screen = "home" | "call" | "journal" | "memory" | "day";
+export type Screen = "home" | "call" | "after-call" | "journal" | "memory" | "day";
 export type CallMode = "vent" | "journal";
 
-export interface ListenerTurn {
-  id: string;
+export type ListenerAction = "silence" | "acknowledge" | "follow_up" | "clarify" | "reflect_briefly";
+
+export interface CallTurn {
   speaker: "you" | "vent";
   text: string;
+  action?: ListenerAction;
+}
+
+export interface MemoryAnswer {
+  answer: string;
+  entryIds: string[];
 }

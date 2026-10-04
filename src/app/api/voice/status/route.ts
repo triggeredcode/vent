@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
-import { audioModel, getVoiceStatus, listenerModel } from "@/lib/ollama";
+import { getModelStatus, journalModel, listenerModel, voiceModel } from "@/lib/ollama";
+import { voiceStatus } from "@/lib/voice";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
-  const status = await getVoiceStatus();
-  return NextResponse.json({ ...status, audioModel: audioModel(), listenerModel: listenerModel() }, { status: status.ready ? 200 : 503 });
+export async function GET(request: Request) {
+  const mode = new URL(request.url).searchParams.get("mode");
+  const [models, voice] = await Promise.all([getModelStatus(mode === "vent" || mode === "journal" ? mode : undefined), voiceStatus()]);
+  return NextResponse.json(
+    { ...models, voice, voiceModel: voiceModel(), listenerModel: listenerModel(), journalModel: journalModel() },
+    { status: models.ready ? 200 : 503 },
+  );
 }
