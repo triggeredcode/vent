@@ -1,6 +1,6 @@
 import type { SVGProps } from "react";
 
-export type IconName = "home" | "book" | "spark" | "phone" | "mic" | "micOff" | "close" | "arrow" | "search" | "shield" | "calendar" | "chevron" | "more" | "heart" | "sun";
+export type IconName = "home" | "book" | "spark" | "phone" | "mic" | "micOff" | "audio" | "audioOff" | "close" | "arrow" | "search" | "shield" | "calendar" | "chevron" | "more" | "heart" | "sun";
 
 export function Icon({ name, ...props }: SVGProps<SVGSVGElement> & { name: IconName }) {
   const common = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
@@ -11,6 +11,8 @@ export function Icon({ name, ...props }: SVGProps<SVGSVGElement> & { name: IconN
     phone: <path d="M7.2 3.5 4.6 5.1c-1 .6-1.4 1.8-1 2.9 2.2 6.2 7.1 11.1 13.3 13.3 1.1.4 2.3 0 2.9-1l1.6-2.6-4.7-3-1.7 2.1c-3.5-1.5-6.3-4.3-7.8-7.8l2.1-1.7z" />,
     mic: <><rect x="9" y="3" width="6" height="12" rx="3" /><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V22M8.5 22h7" /></>,
     micOff: <><path d="m3 3 18 18M9 6v5a3 3 0 0 0 4.6 2.5M15 9V6a3 3 0 0 0-5.1-2.1M17.7 16.7A6.5 6.5 0 0 0 18.5 11M5.5 11a6.5 6.5 0 0 0 10.8 4.9M12 17.5V22M8.5 22h7" /></>,
+    audio: <><path d="M11 5 6 9H2v6h4l5 4z" /><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13" /></>,
+    audioOff: <><path d="M11 5 6 9H2v6h4l5 4zM15 9l6 6M21 9l-6 6" /></>,
     close: <><path d="m6 6 12 12M18 6 6 18" /></>,
     arrow: <><path d="M5 12h14M13 6l6 6-6 6" /></>,
     search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></>,

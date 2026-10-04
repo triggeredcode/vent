@@ -1,27 +1,35 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon, type IconName } from "./icon";
 import { calendarDays, demoEntries, suggestedQuestions } from "@/lib/data";
 import { answerFromEntries, makeEntryFromTranscript } from "@/lib/journal";
+import { bytesToBase64, encodeMonoWav } from "@/lib/wav";
 import type { CallMode, JournalEntry, Screen } from "@/lib/types";
-
-interface SpeechResultEvent extends Event { results: ArrayLike<{ 0: { transcript: string } }> }
-interface SpeechRecognitionLike {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  onresult: ((event: SpeechResultEvent) => void) | null;
-  onerror: (() => void) | null;
-  start(): void;
-  stop(): void;
-}
-type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
 
 const moodByDay: Record<number, string> = { 2: "#f1d58a", 4: "#c9df9f", 8: "#e8ad9d", 11: "#c9df9f", 16: "#87c7a4", 21: "#f1d58a", 28: "#87c7a4" };
 
 function formatTime(total: number) {
   return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+}
+
+function playCallRing(context: AudioContext) {
+  const now = context.currentTime;
+  [0, 0.82].forEach((delay) => {
+    const gain = context.createGain();
+    const low = context.createOscillator();
+    const high = context.createOscillator();
+    low.frequency.value = 440;
+    high.frequency.value = 520;
+    gain.gain.setValueAtTime(0, now + delay);
+    gain.gain.linearRampToValueAtTime(0.035, now + delay + 0.04);
+    gain.gain.setValueAtTime(0.035, now + delay + 0.28);
+    gain.gain.linearRampToValueAtTime(0, now + delay + 0.38);
+    low.connect(gain); high.connect(gain); gain.connect(context.destination);
+    low.start(now + delay); high.start(now + delay);
+    low.stop(now + delay + 0.4); high.stop(now + delay + 0.4);
+  });
 }
 
 function Brand() {
@@ -56,84 +64,155 @@ function HomeScreen({ startCall, openEntry }: { startCall: (mode: CallMode) => v
     <section className="recent-section"><div className="section-heading"><div><span className="eyebrow">YOUR DAYS</span><h2>Recent moments</h2></div><button onClick={() => openEntry(demoEntries[0])}>View journal <Icon name="arrow" /></button></div>
       <div className="moments-list">{demoEntries.slice(0, 2).map((entry) => <button className="moment" key={entry.id} onClick={() => openEntry(entry)}><span className="mood-dot" style={{ background: entry.mood.color }} /><span className="moment-copy"><strong>{entry.displayDate}</strong><small>{entry.summary}</small></span><Icon name="chevron" /></button>)}</div>
     </section>
-    <section className="memory-tease"><div className="memory-art"><span /><span /><span /></div><div><span className="eyebrow">A QUIET PATTERN</span><h3>Walks have helped lately.</h3><p>You sounded lighter on two days that included an evening walk.</p></div></section>
   </main>;
 }
 
 function CallScreen({ mode, onEnd }: { mode: CallMode; onEnd: (transcript: string) => void }) {
   const [seconds, setSeconds] = useState(0);
   const [muted, setMuted] = useState(false);
+  const [speakerOn, setSpeakerOn] = useState(true);
   const [transcript, setTranscript] = useState("");
-  const [speechStatus, setSpeechStatus] = useState("Listening");
-  const recognition = useRef<SpeechRecognitionLike | null>(null);
+  const [status, setStatus] = useState<"connecting" | "ringing" | "listening" | "thinking" | "speaking" | "error">("connecting");
+  const [statusText, setStatusText] = useState("Connecting…");
+  const [gesture, setGesture] = useState("rest");
+  const [attempt, setAttempt] = useState(0);
+  const mutedRef = useRef(false);
+  const speakerRef = useRef(true);
+  const processingRef = useRef(false);
+  const speakingRef = useRef(false);
 
-  const handleTurn = useCallback(async (message: string) => {
-    if (!message.trim()) return;
-    setSpeechStatus("…");
+  useEffect(() => { mutedRef.current = muted; }, [muted]);
+  useEffect(() => { speakerRef.current = speakerOn; }, [speakerOn]);
+
+  const speak = useCallback((text: string) => new Promise<void>((resolve) => {
+    if (!speakerRef.current || !("speechSynthesis" in window) || !text) { resolve(); return; }
+    speakingRef.current = true;
+    setStatus("speaking");
+    setStatusText(text);
+    const utterance = new SpeechSynthesisUtterance(text);
+    const voices = window.speechSynthesis.getVoices();
+    utterance.voice = voices.find((voice) => /siri|samantha|veena|rishi/i.test(voice.name)) ?? voices.find((voice) => voice.lang.startsWith("en-IN")) ?? null;
+    utterance.rate = 0.92;
+    utterance.pitch = 0.96;
+    utterance.onend = () => { speakingRef.current = false; resolve(); };
+    utterance.onerror = () => { speakingRef.current = false; resolve(); };
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+  }), []);
+
+  const handleAudio = useCallback(async (audio: string) => {
+    if (processingRef.current) return;
+    processingRef.current = true;
+    setStatus("thinking");
+    setStatusText("Listening back…");
     try {
-      const response = await fetch("/api/listener", {
+      const response = await fetch("/api/voice/turn", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message, mode }),
+        body: JSON.stringify({ audio, format: "wav", mode }),
       });
-      const data = await response.json() as { text?: string };
-      if (!data.text) { setSpeechStatus("Listening"); return; }
-      setSpeechStatus(data.text);
-      if ("speechSynthesis" in window) {
-        const utterance = new SpeechSynthesisUtterance(data.text);
-        utterance.rate = 0.94;
-        utterance.pitch = 0.92;
-        utterance.onend = () => setSpeechStatus("Listening");
-        window.speechSynthesis.speak(utterance);
-      } else {
-        globalThis.setTimeout(() => setSpeechStatus("Listening"), 1700);
-      }
+      const data = await response.json() as { transcript?: string; text?: string; action?: string; error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Voice response failed");
+      if (data.transcript) setTranscript((current) => `${current} ${data.transcript}`.trim());
+      setGesture(data.action ?? "acknowledge");
+      await speak(data.text ?? "");
+      setGesture("rest");
+      setStatus("listening");
+      setStatusText("Listening");
     } catch {
-      setSpeechStatus("Hmm… I'm here.");
-      window.setTimeout(() => setSpeechStatus("Listening"), 1700);
+      setStatus("error");
+      setStatusText("I lost the connection");
+    } finally {
+      processingRef.current = false;
     }
-  }, [mode]);
+  }, [mode, speak]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setSeconds((value) => value + 1), 1000);
-    const speechWindow = window as typeof window & { SpeechRecognition?: SpeechRecognitionCtor; webkitSpeechRecognition?: SpeechRecognitionCtor };
-    const Recognition = speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition;
-    if (Recognition) {
-      const instance = new Recognition();
-      instance.continuous = true;
-      instance.interimResults = false;
-      instance.lang = "en-IN";
-      instance.onresult = (event) => {
-        const latest = event.results[event.results.length - 1]?.[0]?.transcript ?? "";
-        setTranscript((value) => `${value} ${latest}`.trim());
-        void handleTurn(latest);
-      };
-      instance.onerror = () => setSpeechStatus("Listening quietly");
-      recognition.current = instance;
-      try { instance.start(); } catch {}
-    }
-    return () => { window.clearInterval(timer); try { recognition.current?.stop(); } catch {} };
-  }, [handleTurn]);
+    let disposed = false;
+    let stream: MediaStream | undefined;
+    let context: AudioContext | undefined;
+    let processor: ScriptProcessorNode | undefined;
+    let source: MediaStreamAudioSourceNode | undefined;
+    const chunks: Float32Array[] = [];
+    const preRoll: Float32Array[] = [];
+    let recording = false;
+    let quietFrames = 0;
 
-  const toggleMute = () => {
-    if (muted) { try { recognition.current?.start(); } catch {} } else { try { recognition.current?.stop(); } catch {} }
-    setMuted((value) => !value);
-  };
+    const start = async () => {
+      setStatus("connecting");
+      setStatusText("Connecting…");
+      try {
+        context = new AudioContext();
+        await context.resume();
+        const health = await fetch("/api/voice/status", { cache: "no-store" });
+        if (!health.ok) throw new Error("Ollama is not ready");
+        setStatus("ringing");
+        setStatusText("Ringing…");
+        playCallRing(context);
+        await new Promise((resolve) => window.setTimeout(resolve, 1_650));
+        if (disposed) return;
+        stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
+        if (disposed) { stream.getTracks().forEach((track) => track.stop()); return; }
+        source = context.createMediaStreamSource(stream);
+        processor = context.createScriptProcessor(4096, 1, 1);
+        processor.onaudioprocess = (event) => {
+          if (mutedRef.current || processingRef.current || speakingRef.current) return;
+          const samples = new Float32Array(event.inputBuffer.getChannelData(0));
+          const rms = Math.sqrt(samples.reduce((sum, value) => sum + value * value, 0) / samples.length);
+          preRoll.push(samples);
+          if (preRoll.length > 4) preRoll.shift();
+          if (rms > 0.018) {
+            if (!recording) { chunks.push(...preRoll); recording = true; }
+            chunks.push(samples);
+            quietFrames = 0;
+          } else if (recording) {
+            chunks.push(samples);
+            quietFrames += 1;
+            if (quietFrames >= 10) {
+              const captured = chunks.splice(0);
+              recording = false;
+              quietFrames = 0;
+              const duration = captured.reduce((total, chunk) => total + chunk.length, 0) / (context?.sampleRate ?? 48_000);
+              if (duration >= 0.55) void handleAudio(bytesToBase64(encodeMonoWav(captured, context?.sampleRate ?? 48_000)));
+            }
+          }
+        };
+        source.connect(processor);
+        processor.connect(context.destination);
+        setSeconds(0);
+        setStatus("listening");
+        setStatusText("Listening");
+      } catch (error) {
+        if (disposed) return;
+        setStatus("error");
+        setStatusText(error instanceof DOMException && error.name === "NotAllowedError" ? "Microphone access is needed" : "Ollama is not ready");
+      }
+    };
+    void start();
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+      window.speechSynthesis?.cancel();
+      processor?.disconnect();
+      source?.disconnect();
+      void context?.close();
+      stream?.getTracks().forEach((track) => track.stop());
+    };
+  }, [attempt, handleAudio]);
 
   return <main className="call-screen">
-    <div className="call-top"><span>{mode === "vent" ? "Vent" : "Journal"}</span><button aria-label="More options"><Icon name="more" /></button></div>
-    <div className="call-body"><div className={`listener-orb ${muted ? "muted" : ""}`}><span className="orb-core">V</span><i /><i /><i /></div><h1>{muted ? "Muted" : speechStatus}</h1><p>{mode === "vent" ? "Take your time. There’s no rush." : "Tell me about your day, in your own way."}</p><div className="timer">{formatTime(seconds)}</div>
-      <div className="wave" aria-hidden="true">{Array.from({ length: 21 }, (_, i) => <span key={i} style={{ height: muted ? 3 : `${8 + ((i * 13) % 31)}px`, animationDelay: `${i * -0.07}s` }} />)}</div>
+    <div className="call-top"><span>{mode === "vent" ? "VENT" : "JOURNAL"}</span><span className="call-secure"><Icon name="shield" /> Local</span></div>
+    <div className="call-body"><div className={`listener-orb ${muted ? "muted" : ""} ${status} gesture-${gesture}`}><div className="mascot-glow" /><Image src="/vent-listener.png" alt="VENT listener mascot" width={300} height={300} priority /><i /><i /></div><div className={`call-state ${status}`}><span />{muted ? "Muted" : statusText}</div><div className="timer">{status === "connecting" || status === "ringing" ? "" : formatTime(seconds)}</div>
+      {status === "error" && <button className="retry-call" onClick={() => setAttempt((value) => value + 1)}>Try again</button>}
     </div>
-    <div className="call-fallback"><label htmlFor="demo-line">Demo fallback · press Enter to speak</label><input id="demo-line" value={transcript} onChange={(event) => setTranscript(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void handleTurn(transcript); }} placeholder="Type a line if speech recognition is unavailable…" /></div>
-    <div className="call-controls"><button onClick={toggleMute} className="call-control"><span><Icon name={muted ? "micOff" : "mic"} /></span>{muted ? "Unmute" : "Mute"}</button><button onClick={() => onEnd(transcript)} className="end-call" aria-label="End call"><Icon name="phone" /></button><button className="call-control"><span><Icon name="spark" /></span>Hold</button></div>
+    <div className="call-controls"><button onClick={() => setMuted((value) => !value)} className={`call-control ${muted ? "selected" : ""}`}><span><Icon name={muted ? "micOff" : "mic"} /></span>{muted ? "Unmute" : "Mute"}</button><button onClick={() => onEnd(transcript)} className="end-call" aria-label="End call"><Icon name="phone" /></button><button onClick={() => { setSpeakerOn((value) => !value); window.speechSynthesis?.cancel(); }} className={`call-control ${!speakerOn ? "selected" : ""}`}><span><Icon name={speakerOn ? "audio" : "audioOff"} /></span>Audio</button></div>
   </main>;
 }
 
 function JournalScreen({ entries, openEntry }: { entries: JournalEntry[]; openEntry: (entry: JournalEntry) => void }) {
-  return <main className="screen journal-screen"><section className="journal-title"><span className="eyebrow">YOUR JOURNAL</span><h1>A picture of your life</h1><p>Every day you share adds another little piece.</p></section>
+  return <main className="screen journal-screen"><section className="journal-title"><span className="eyebrow">YOUR JOURNAL</span><h1>Your days, gently held.</h1></section>
     <section className="calendar-card"><div className="calendar-head"><button aria-label="Previous month">‹</button><h2>October 2026</h2><button aria-label="Next month">›</button></div><div className="weekdays">{["M", "T", "W", "T", "F", "S", "S"].map((day, i) => <span key={`${day}-${i}`}>{day}</span>)}</div><div className="calendar-grid">{calendarDays.map(({ day, currentMonth }, i) => <button key={`${day}-${i}`} className={!currentMonth ? "outside" : day === 4 ? "today" : ""} onClick={() => day === 4 && openEntry(entries[0])}><span>{day}</span>{currentMonth && moodByDay[day] && <i style={{ background: moodByDay[day] }} />}</button>)}</div><div className="calendar-legend"><span><i className="good" />Good</span><span><i className="mixed" />Mixed</span><span><i className="rough" />Rough</span></div></section>
-    <section className="month-note"><span>October, so far</span><strong>“More focused than last week, with quieter evenings.”</strong><small>Based only on what you shared.</small></section>
     <section className="entry-list"><div className="section-heading"><div><span className="eyebrow">LATEST</span><h2>Journal entries</h2></div></div>{entries.map((entry) => <button className="entry-row" key={entry.id} onClick={() => openEntry(entry)}><span className="entry-date"><strong>{entry.date.slice(-2)}</strong><small>{new Date(`${entry.date}T12:00:00`).toLocaleDateString("en", { month: "short" }).toUpperCase()}</small></span><span><strong>{entry.mood.label[0].toUpperCase() + entry.mood.label.slice(1)} day</strong><small>{entry.highlights[0]}</small></span><span className="entry-mood" style={{ background: entry.mood.color }} /></button>)}</section>
   </main>;
 }
