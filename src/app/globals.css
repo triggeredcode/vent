@@ -63,7 +63,7 @@ h1, h2, h3, p { margin-top: 0; }
 .cover-call { width: 100%; min-height: 220px; flex: 1 1 auto; position: relative; overflow: hidden; border: 0; border-radius: 2px 2px 32px 2px; background: var(--sun); text-align: left; container-type: size; transition: background .5s ease, color .5s ease; }
 .cover-hit { position: absolute; inset: 0; z-index: 4; border: 0; background: transparent; cursor: pointer; }
 .cover-call > *:not(.cover-hit):not(.scene-switch) { pointer-events: none; }
-.scene-switch { position: absolute; z-index: 5; left: 14px; top: 14px; display: flex; padding: 3px; gap: 2px; border-radius: 999px; background: color-mix(in srgb, currentColor 12%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.scene-switch { position: absolute; z-index: 5; right: 14px; top: 16px; display: flex; padding: 3px; gap: 2px; border-radius: 999px; background: color-mix(in srgb, currentColor 12%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
 .scene-switch button { height: 28px; padding: 0 11px; border: 0; border-radius: 999px; background: transparent; color: inherit; font-size: 10px; font-weight: 800; letter-spacing: .04em; cursor: pointer; opacity: .7; transition: background .25s, color .25s, opacity .25s; }
 .scene-switch button.selected { background: currentColor; opacity: 1; }
 .cover-breathe .scene-switch button.selected { color: var(--sun); background: var(--ink); }
@@ -370,6 +370,7 @@ h1, h2, h3, p { margin-top: 0; }
 .call-screen .scene-backdrop { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
 .call-screen.vent-scene .call-body { position: relative; align-self: stretch; container-type: size; }
 .scene-host { --level: 0; --voice: 0; position: absolute; inset: 0; z-index: 1; cursor: pointer; }
+.call-screen.vent-scene .retry-call { position: absolute; z-index: 3; left: 50%; bottom: 10px; transform: translateX(-50%); }
 .phase-hearing { --tempo: .62s; }
 .phase-thinking { --tempo: 1.8s; }
 
