@@ -1,64 +1,39 @@
 # Production readiness
 
-## Current local product
+## What runs today, on one machine
 
-VENT already runs the private core loop on one machine:
+1. Browser microphone capture and voice-activity detection.
+2. Gemma 4 E2B transcription and Gemma 4 E4B listening, through local Ollama.
+3. A local open-weight voice (Kokoro-82M) behind an OpenAI-compatible `/v1/audio/speech` server in `./voice`.
+4. Gemma-written journal pages and grounded memory answers.
+5. Pages in a local JSON store, or MongoDB Atlas with vector search.
 
-1. Browser microphone capture and local voice-activity detection.
-2. Local Ollama audio transcription with `gemma4:e2b`.
-3. Local low-latency listener response with `gemma3:1b`.
-4. Configurable custom-voice synthesis, with system speech as a temporary fallback.
-5. Journal persistence in the browser.
+This is a complete private product for one person on one machine. It is not yet a multi-user service.
 
-This is appropriate for a private single-user demo. It is not yet a multi-user production architecture. Local limits include cold-model latency, one concurrent GPU workload, browser permission differences, no account recovery, and browser-local journal storage.
+## Latency budget (M4 Pro, warm)
 
-## Latency budget
-
-| Stage | Local target | Production target |
+| Stage | Today | Production target |
 | --- | ---: | ---: |
-| End-of-turn detection | 350–450 ms | 200–350 ms |
-| First transcript | 1–3 s warm | 200–600 ms streaming |
-| Listener decision | 300–900 ms warm | 150–500 ms |
-| First voice audio | 250–900 ms | 100–400 ms streaming |
+| End-of-turn detection | ~470 ms | 250–350 ms with a learned turn detector |
+| Transcription (Gemma 4 E2B) | 150–400 ms | 100–300 ms streaming ASR |
+| Listener reply (Gemma 4 E4B) | 400–550 ms | 200–400 ms |
+| First voice audio (Kokoro) | see `voice/README.md` | <200 ms streaming |
 
-The client now uses a 2,048-sample capture buffer and about 380 ms of trailing silence instead of the earlier ~850 ms wait. Ollama models are kept warm for ten minutes and Gemma audio reasoning is disabled for short transcription.
+The listener's system prompt is pre-filled while the phone rings, so the first turn isn't slower than the rest.
 
-Measured on the current local machine with a short synthetic voice turn:
+## Local limits
 
-- model warm-up during Connecting: 3.19 s from fully unloaded state
-- first turn after warm-up: 324 ms transcription + 137 ms response
-- subsequent warm turn: 147 ms transcription + 95 ms response
-
-This keeps the warm model work below 250 ms; perceived delay is then dominated by end-of-turn detection and voice playback startup.
-
-## Custom voice
-
-The app calls `POST /api/voice/speak`, which proxies an OpenAI-compatible local voice server configured with:
-
-```dotenv
-VENT_TTS_BASE_URL=http://127.0.0.1:8880
-VENT_TTS_MODEL=openvoice-v2
-VENT_TTS_VOICE=vent-calm
-```
-
-OpenVoice V2 is the recommended identity layer because its code and models permit commercial use and it can clone tone color from a short reference. A production wrapper should expose `/v1/audio/speech`, cache the extracted speaker embedding at startup, keep the model warm, and stream encoded audio chunks.
-
-To create `vent-calm`, we need one consented voice reference:
-
-- 20–30 seconds of clean WAV audio
-- one speaker, no music, no reverb
-- calm conversational delivery, not announcer delivery
-- the exact transcript of that recording
-- explicit permission to synthesize and ship that voice
-
-Do not use a celebrity, public figure, or unconsented recording.
+- Two Gemma models stay resident (~17 GB unified memory). Smaller machines can set `OLLAMA_LISTENER_MODEL=gemma4:e2b` (faster, plainer replies).
+- One conversation at a time per GPU.
+- Browser-only microphone, so no phone-network calling or background calls.
+- No accounts or encryption at rest for the local file store. Disk encryption is the boundary.
 
 ## Production path
 
-1. Replace browser-local journal storage with encrypted user-scoped storage.
-2. Move transport to a realtime session with streaming ASR and streaming TTS.
-3. Keep the listener action contract and mascot gesture mapping unchanged.
-4. Add interruption, barge-in, echo cancellation, and latency tracing.
-5. Add deletion/export controls before inviting external users.
-6. Review crisis behavior and privacy copy with qualified specialists.
+1. User-scoped, encrypted storage (Atlas with per-user keys) and account recovery.
+2. A realtime transport (WebRTC) with streaming ASR and streaming TTS; keep the listener action contract and the mascot gesture mapping unchanged.
+3. Learned end-of-turn detection and proper acoustic echo cancellation for speaker-phone barge-in.
+4. Sentry dashboards on turn latency percentiles, plus alerts on transcription/extraction failures (already instrumented).
+5. A reviewed crisis policy with qualified specialists before inviting anyone beyond friends.
+6. A fine-tuned listener only if real sessions show a measurable gap (unsolicited-advice rate, reply length, interruption rate).
 

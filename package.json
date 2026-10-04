@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "voice": "./voice/start.sh",
+    "seed": "node scripts/seed.mjs"
   },
   "dependencies": {
     "@sentry/nextjs": "^11.4.0",
