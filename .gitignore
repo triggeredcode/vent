@@ -46,4 +46,3 @@ next-env.d.ts
 # local journal data (private)
 /.vent-data/
 
-
