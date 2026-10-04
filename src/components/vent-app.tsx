@@ -9,6 +9,7 @@ import { BrandMark } from "./brand";
 import { Icon, type IconName } from "./icon";
 import { JournalScreen } from "./journal-screen";
 import { MemoryScreen } from "./memory-screen";
+import type { VentScene } from "./scenes";
 import type { CallMode, JournalEntry, Screen } from "@/lib/types";
 
 function TopBar({ onHome }: { onHome: () => void }) {
@@ -33,6 +34,7 @@ function BottomNav({ screen, go }: { screen: Screen; go: (screen: Screen) => voi
 export function VentApp() {
   const [screen, setScreen] = useState<Screen>("home");
   const [callMode, setCallMode] = useState<CallMode>("vent");
+  const [scene, setScene] = useState<VentScene>("breathe");
   const [lastCall, setLastCall] = useState<CallResult | null>(null);
   const [entries, setEntries] = useState<JournalEntry[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -54,6 +56,19 @@ export function VentApp() {
     void refresh();
   }, [refresh]);
 
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("vent-scene");
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- restoring a per-device preference after hydration
+      if (saved === "breathe" || saved === "punch" || saved === "sweat") setScene(saved);
+    } catch { /* storage unavailable */ }
+  }, []);
+
+  const chooseScene = (next: VentScene) => {
+    setScene(next);
+    try { window.localStorage.setItem("vent-scene", next); } catch { /* storage unavailable */ }
+  };
+
   const navigate = useCallback((next: Screen) => {
     setScreen(next);
     scrollRef.current?.scrollTo({ top: 0 });
@@ -70,13 +85,13 @@ export function VentApp() {
   const selected = entries.find((entry) => entry.id === selectedId);
   const fullBleed = screen === "call" || screen === "after-call";
 
-  let content: React.ReactNode = <HomeScreen entries={entries} startCall={startCall} openEntry={openEntry} />;
+  let content: React.ReactNode = <HomeScreen entries={entries} scene={scene} chooseScene={chooseScene} startCall={startCall} openEntry={openEntry} />;
   if (screen === "journal") content = <JournalScreen entries={entries} loaded={loaded} openEntry={openEntry} startCall={startCall} />;
   if (screen === "memory") content = <MemoryScreen entries={entries} openEntry={openEntry} />;
   if (screen === "day" && selected) content = <DayScreen key={selected.id} entry={selected} back={() => navigate("journal")} onChange={refresh} onDeleted={() => { void refresh(); navigate("journal"); }} />;
 
   return <div className={`app-shell screen-${screen}`}>
-    {screen === "call" && <CallScreen mode={callMode} onEnd={finishCall} />}
+    {screen === "call" && <CallScreen mode={callMode} scene={scene} onEnd={finishCall} />}
     {screen === "after-call" && lastCall && <AfterCall call={lastCall} onDone={() => navigate("home")} onWritten={pageWritten} />}
     {!fullBleed && <>
       <TopBar onHome={() => navigate("home")} />

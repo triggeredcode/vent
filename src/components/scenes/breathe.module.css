@@ -1,0 +1,3 @@
+.theme {}
+.backdrop { position: absolute; inset: 0; background: #ddd; }
+.stage { width: 100%; height: 100%; }

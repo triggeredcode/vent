@@ -60,7 +60,24 @@ h1, h2, h3, p { margin-top: 0; }
 .cover-title { position: relative; z-index: 3; margin: 16px 0 -8px; font-family: var(--display); font-size: clamp(49px, 13vw, 61px); font-weight: 500; line-height: .86; letter-spacing: -.07em; }
 .cover-title em, .memory-headline em, .after-copy h1 em { color: var(--tomato); font-weight: 400; }
 
-.cover-call { width: 100%; min-height: 220px; flex: 1 1 auto; position: relative; overflow: hidden; border: 0; border-radius: 2px 2px 32px 2px; background: var(--sun); text-align: left; cursor: pointer; container-type: size; }
+.cover-call { width: 100%; min-height: 220px; flex: 1 1 auto; position: relative; overflow: hidden; border: 0; border-radius: 2px 2px 32px 2px; background: var(--sun); text-align: left; container-type: size; transition: background .5s ease, color .5s ease; }
+.cover-hit { position: absolute; inset: 0; z-index: 4; border: 0; background: transparent; cursor: pointer; }
+.cover-call > *:not(.cover-hit):not(.scene-switch) { pointer-events: none; }
+.scene-switch { position: absolute; z-index: 5; left: 14px; top: 14px; display: flex; padding: 3px; gap: 2px; border-radius: 999px; background: color-mix(in srgb, currentColor 12%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.scene-switch button { height: 28px; padding: 0 11px; border: 0; border-radius: 999px; background: transparent; color: inherit; font-size: 10px; font-weight: 800; letter-spacing: .04em; cursor: pointer; opacity: .7; transition: background .25s, color .25s, opacity .25s; }
+.scene-switch button.selected { background: currentColor; opacity: 1; }
+.cover-breathe .scene-switch button.selected { color: var(--sun); background: var(--ink); }
+.cover-punch .scene-switch button.selected { color: #1b0f0e; background: #fff4ec; }
+.cover-sweat .scene-switch button.selected { color: #c6f432; background: #111; }
+.cover-art { position: relative; z-index: 2; width: min(84cqh, 300px); max-width: 82cqw; aspect-ratio: 1; display: grid; place-items: center; animation: enter .45s ease both; }
+.cover-art > * { width: 100%; height: 100%; }
+.cover-punch .cover-shape-a { background: #e8402f; }
+.cover-punch .cover-shape-b, .cover-punch .cover-call:after { background: #ffd23f; }
+.cover-punch:after { border-color: rgba(255,244,236,.2); }
+.cover-punch .cover-phone { background: #e8402f; }
+.cover-sweat .cover-shape-a { background: #ff4fa3; }
+.cover-sweat .cover-shape-b { background: #3a5bff; }
+.cover-sweat .cover-phone { background: #111; }
 .cover-call:after { content: ""; position: absolute; width: 180px; height: 180px; border: 1px solid rgba(37,48,43,.19); border-radius: 50%; right: -62px; top: -72px; }
 .cover-shape-a { position: absolute; width: 34cqh; height: 34cqh; left: -12cqh; bottom: 20cqh; border-radius: 50%; background: var(--coral); opacity: .9; }
 .cover-shape-b { position: absolute; width: 16px; height: 16px; right: 26%; top: 18%; border-radius: 50%; background: var(--forest); }
@@ -68,6 +85,7 @@ h1, h2, h3, p { margin-top: 0; }
 .cover-mascot img { position: relative; z-index: 2; width: auto; height: min(84cqh, 300px); max-width: 82cqw; aspect-ratio: 1; object-fit: contain; filter: drop-shadow(0 22px 25px rgba(80,57,17,.18)); transition: transform .35s ease; animation: idle-breathe 5s ease-in-out infinite; transform-origin: 50% 85%; }
 @keyframes idle-breathe { 50% { scale: 1.025; translate: 0 -3px; } }
 .cover-call:hover .cover-mascot img { transform: translateY(-5px) rotate(-2deg); }
+.cover-mascot { animation: enter .45s ease both; }
 .cover-sun { position: absolute; width: min(66cqh, 240px); aspect-ratio: 1; border-radius: 50%; background: var(--cream); box-shadow: 0 0 0 28px rgba(255,255,255,.14); }
 .cover-call-copy { position: absolute; z-index: 3; left: 19px; bottom: 18px; }
 .cover-call-copy small { display: block; margin-bottom: 3px; font-size: 8px; font-weight: 900; letter-spacing: .17em; }
@@ -315,7 +333,8 @@ h1, h2, h3, p { margin-top: 0; }
 .after-call .shape-moon { background: var(--sky); }
 .after-top { position: relative; z-index: 1; display: flex; justify-content: space-between; border-top: 1px solid var(--ink); padding-top: 7px; font-size: 8px; font-weight: 900; letter-spacing: .16em; }
 .after-copy { position: relative; z-index: 1; flex: 1; display: flex; flex-direction: column; justify-content: flex-end; animation: enter .5s ease both; }
-.writing-mark { align-self: center; margin-bottom: auto; margin-top: 8%; }
+.writing-mark { align-self: flex-start; margin-bottom: 18px; }
+.writing-mark .thinking-dots i { width: 16px; height: 16px; }
 .writing-mark img { width: 190px; height: 190px; object-fit: contain; filter: drop-shadow(0 20px 24px rgba(80,57,17,.2)); }
 .after-writing .writing-mark img { animation: consider 1.6s ease-in-out infinite; transform-origin: 50% 80%; }
 .after-copy h1 { margin: 0 0 12px; font-family: var(--display); font-size: clamp(54px, 15vw, 66px); font-weight: 500; line-height: .88; letter-spacing: -.065em; }
@@ -347,70 +366,12 @@ h1, h2, h3, p { margin-top: 0; }
 .people-strip strong { font-family: var(--display); font-size: 19px; font-weight: 500; letter-spacing: -.02em; }
 .people-strip small { font-size: 10px; font-weight: 800; opacity: .6; }
 
-/* ───────── Talk-it-out scenes: punch, sweat, breathe ───────── */
-.scene-punch { --poster: #ff6a4d; --accent: #ffd23f; --accent-2: #2b1a14; }
-.scene-sweat { --poster: #b9e34b; --accent: #3a86ff; --accent-2: #17361a; }
-.scene-breathe { --poster: #fbe2cf; --accent: #c7b3dc; --accent-2: #3a86ff; }
-/* The listener's read of the conversation recolours the poster as you talk. */
-.call-screen[data-tone="fired_up"] { --poster: #ff5d47; --accent: #ffd23f; --accent-2: #2b1a14; }
-.call-screen[data-tone="heavy"] { --poster: #a495e6; --accent: #f6c6dc; --accent-2: #2a2350; }
-.call-screen[data-tone="tense"] { --poster: #45cbb9; --accent: #ffe066; --accent-2: #0b3b36; }
-.call-screen[data-tone="bright"] { --poster: #ffc93c; --accent: #ff7b54; --accent-2: #3b2f0b; }
-.call-screen[data-tone="calm"] { --poster: #a7d8cb; --accent: #f8e9b3; --accent-2: #1f4b3f; }
+/* ───────── Talk-it-out scenes: each module in src/components/scenes crafts its own world ───────── */
+.call-screen .scene-backdrop { position: absolute; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+.call-screen.vent-scene .call-body { position: relative; align-self: stretch; container-type: size; }
+.scene-host { --level: 0; --voice: 0; position: absolute; inset: 0; z-index: 1; cursor: pointer; }
 .phase-hearing { --tempo: .62s; }
 .phase-thinking { --tempo: 1.8s; }
-
-.scene-picker { display: flex; justify-content: center; gap: 6px; margin-top: 10px; }
-.scene-picker button { display: inline-flex; align-items: center; gap: 5px; height: 30px; padding: 0 12px; border: 0; border-radius: 999px; background: rgba(255,255,255,.38); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); font-size: 11px; font-weight: 800; cursor: pointer; transition: background .2s, color .2s, transform .2s; }
-.scene-picker button span { font-size: 14px; }
-.scene-picker button:hover { transform: translateY(-1px); }
-.scene-picker button.selected { background: var(--ink); color: var(--paper); }
-
-.call-body { position: relative; container-type: inline-size; }
-.scene { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
-.call-body .listener-orb { z-index: 1; }
-.phase-speaking .scene, .phase-speaking .scene * , .phase-connecting .scene *, .phase-ringing .scene * { animation-play-state: paused !important; }
-
-/* Punch: a jab, a swinging bag, a burst on impact */
-.scene-punch .listener-orb { translate: -30px 0; }
-.scene-props-punch { z-index: 2; }
-.punch-bag { --bag: #2b1a14; position: absolute; right: 4%; top: 4%; width: 70px; height: 192px; color: rgba(43,26,20,.7); transform-origin: 50% 0; animation: bag-swing var(--tempo) ease-in-out infinite; }
-.glove { --glove: #ffd23f; --glove-cuff: #fff3c4; position: absolute; z-index: 2; left: calc(50% - 12px); top: 50%; width: 54px; animation: jab var(--tempo) cubic-bezier(.5,0,.3,1) infinite; filter: drop-shadow(0 6px 8px rgba(43,26,20,.25)); }
-.punch-burst { position: absolute; right: calc(4% + 58px); top: 34%; width: 44px; height: 44px; animation: burst var(--tempo) ease-out infinite; }
-.punch-burst i { position: absolute; left: 50%; top: 50%; width: 4px; height: 16px; margin: -8px 0 0 -2px; border-radius: 4px; background: var(--accent); transform-origin: 50% 50%; }
-.punch-burst i:nth-child(1) { transform: rotate(0deg) translateY(-18px); }
-.punch-burst i:nth-child(2) { transform: rotate(-50deg) translateY(-18px); }
-.punch-burst i:nth-child(3) { transform: rotate(-100deg) translateY(-18px); }
-.punch-burst i:nth-child(4) { transform: rotate(-140deg) translateY(-18px); }
-.punch-burst i:nth-child(5) { transform: rotate(50deg) translateY(-18px); }
-.scene-punch .listener-orb:not(.speaking) img { animation: punch-body var(--tempo) ease-in-out infinite; transform-origin: 50% 85%; }
-@keyframes jab { 0%, 22% { transform: translateX(0) rotate(0); } 32% { transform: translateX(-8px) rotate(-8deg); } 46% { transform: translateX(calc(46cqw - 116px)) rotate(4deg) scale(1.08); } 62%, 100% { transform: translateX(0) rotate(0); } }
-@keyframes bag-swing { 0%, 45% { transform: rotate(0); } 54% { transform: rotate(11deg); } 70% { transform: rotate(-4deg); } 84% { transform: rotate(2deg); } 100% { transform: rotate(0); } }
-@keyframes burst { 0%, 44% { opacity: 0; transform: scale(.4); } 49% { opacity: 1; transform: scale(1); } 64%, 100% { opacity: 0; transform: scale(1.35); } }
-@keyframes punch-body { 0%, 22%, 100% { transform: rotate(0) translateX(0); } 32% { transform: rotate(-5deg) translateX(-5px); } 46% { transform: rotate(5deg) translateX(9px); } 62% { transform: rotate(0) translateX(0); } }
-
-/* Sweat: pull-ups, flying sweat, a +1 every rep */
-.pull-bar { position: absolute; left: 8%; width: 84%; top: calc(50% - 150px); color: var(--accent-2); }
-.scene-sweat .listener-orb:not(.speaking) img { animation: pull-up calc(var(--tempo) * 1.6) ease-in-out infinite; }
-.sweat-drop { position: absolute; top: calc(50% - 96px); left: 50%; width: 10px; height: 14px; border-radius: 50% 0 50% 50%; background: var(--accent); transform: rotate(-45deg); opacity: 0; animation: sweat-fly calc(var(--tempo) * 1.6) ease-out infinite; }
-.sweat-drop.d2 { --dx: -64px; --dy: -26px; animation-delay: .05s; }
-.sweat-drop.d1 { --dx: 60px; --dy: -34px; }
-.sweat-drop.d3 { --dx: 18px; --dy: -58px; animation-delay: .1s; width: 8px; height: 11px; }
-.rep-burst { position: absolute; top: calc(50% - 176px); left: calc(50% + 70px); font-family: var(--display); font-size: 28px; font-style: italic; color: var(--accent-2); opacity: 0; animation: rep calc(var(--tempo) * 1.6) ease-out infinite; }
-@keyframes pull-up { 0%, 100% { transform: translateY(36px) scaleY(.97); } 45%, 55% { transform: translateY(-22px) scaleY(1.02); } }
-@keyframes sweat-fly { 0%, 44% { opacity: 0; translate: 0 0; } 52% { opacity: 1; } 80%, 100% { opacity: 0; translate: var(--dx) var(--dy); } }
-@keyframes rep { 0%, 46% { opacity: 0; transform: translateY(8px) scale(.8); } 56% { opacity: 1; transform: none; } 80%, 100% { opacity: 0; transform: translateY(-10px); } }
-
-/* Breathe: colour that slowly inhales and exhales */
-.breath-blob { position: absolute; left: 50%; top: 50%; width: 92cqw; height: 92cqw; max-width: 380px; max-height: 380px; translate: -50% -50%; border-radius: 42% 58% 60% 40% / 45% 45% 55% 55%; filter: blur(6px); opacity: .9; mix-blend-mode: multiply; animation: blob-morph 9s ease-in-out infinite, breathe-in 6s ease-in-out infinite; }
-.breath-blob.b1 { background: var(--accent); }
-.breath-blob.b2 { background: #98bfd1; width: 70cqw; height: 70cqw; animation-delay: -2s, -1s; }
-.breath-blob.b3 { background: #ffc96b; width: 54cqw; height: 54cqw; animation-delay: -4s, -2s; }
-.breath-blob.b4 { background: #f39ab4; width: 38cqw; height: 38cqw; animation-delay: -6s, -3s; opacity: .55; }
-.scene-breathe .listener-orb:before { opacity: .18; }
-.scene-breathe .listener-orb:not(.speaking) img { animation: breathe-in 6s ease-in-out infinite; }
-@keyframes blob-morph { 0%, 100% { border-radius: 42% 58% 60% 40% / 45% 45% 55% 55%; rotate: 0deg; } 50% { border-radius: 58% 42% 38% 62% / 55% 60% 40% 45%; rotate: 50deg; } }
-@keyframes breathe-in { 0%, 100% { scale: .92; } 50% { scale: 1.06; } }
 
 /* Let it go: the call is crumpled like a page and tossed away */
 .toss { position: relative; z-index: 1; flex: 1; display: flex; flex-direction: column; justify-content: flex-end; }

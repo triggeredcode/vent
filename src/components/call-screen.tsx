@@ -4,7 +4,7 @@ import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "./icon";
 import { bytesToBase64, encodeMonoWav } from "@/lib/wav";
-import { CallScene, sceneOptions, type VentScene } from "./call-scene";
+import { scenes, type SceneProps, type VentScene } from "./scenes";
 import type { CallMode, CallTurn, ListenerAction, ListenerTone } from "@/lib/types";
 
 export interface CallResult {
@@ -63,7 +63,7 @@ function playRing(context: AudioContext, at: number) {
 
 const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
-export function CallScreen({ mode, onEnd }: { mode: CallMode; onEnd: (result: CallResult) => void }) {
+export function CallScreen({ mode, scene, onEnd }: { mode: CallMode; scene: VentScene; onEnd: (result: CallResult) => void }) {
   const [phase, setPhase] = useState<Phase>("connecting");
   const [error, setError] = useState("");
   const [seconds, setSeconds] = useState(0);
@@ -72,14 +72,11 @@ export function CallScreen({ mode, onEnd }: { mode: CallMode; onEnd: (result: Ca
   const [gesture, setGesture] = useState<ListenerAction | "rest">("rest");
   const [attempt, setAttempt] = useState(0);
   const [tone, setTone] = useState<ListenerTone | null>(null);
-  const [scene, setScene] = useState<VentScene>(() => {
-    try { return (window.localStorage.getItem("vent-scene") as VentScene) || "punch"; } catch { return "punch"; }
-  });
-  const pickScene = (next: VentScene) => {
-    setScene(next);
-    setTone(null);
-    try { window.localStorage.setItem("vent-scene", next); } catch { /* private mode */ }
-  };
+  const levelListenersRef = useRef(new Set<(level: number) => void>());
+  const subscribeLevel = useCallback((listener: (level: number) => void) => {
+    levelListenersRef.current.add(listener);
+    return () => { levelListenersRef.current.delete(listener); };
+  }, []);
 
   const turnsRef = useRef<CallTurn[]>([]);
   const queueRef = useRef<string[]>([]);
@@ -266,7 +263,10 @@ export function CallScreen({ mode, onEnd }: { mode: CallMode; onEnd: (result: Ca
           let sum = 0;
           for (let index = 0; index < samples.length; index += 1) sum += samples[index] * samples[index];
           const rms = Math.sqrt(sum / samples.length);
-          levelRef.current?.style.setProperty("--level", String(Math.min(1, rms * 14)));
+          const deaf = mutedRef.current || speakingRef.current || performance.now() < deafUntilRef.current;
+          const level = deaf ? 0 : Math.min(1, rms * 14);
+          levelRef.current?.style.setProperty("--level", level.toFixed(3));
+          levelListenersRef.current.forEach((listener) => listener(level));
           if (mutedRef.current) { chunks.length = 0; recordingRef.current = false; loudFrames = 0; return; }
 
           if (speakingRef.current || performance.now() < deafUntilRef.current) {
@@ -331,27 +331,28 @@ export function CallScreen({ mode, onEnd }: { mode: CallMode; onEnd: (result: Ca
   const live = phase !== "connecting" && phase !== "ringing" && phase !== "error";
   const status = muted && live ? "muted" : live ? formatTime(seconds) : statusCopy[phase];
 
-  return <main className={`call-screen call-${mode} phase-${phase} ${mode === "vent" ? `scene-${scene}` : ""}`} data-tone={tone ?? undefined}>
-    <div className="poster-art" aria-hidden="true"><span className="shape-sun" /><span className="shape-moon" /><span className="shape-ring" /><span className="shape-leaf" /><span className="shape-dot" /></div>
+  const ventScene = mode === "vent" ? scenes[scene] : null;
+  const sceneProps: SceneProps = { phase, tone, muted, subscribeLevel };
+
+  return <main className={`call-screen call-${mode} phase-${phase} ${ventScene ? `vent-scene vent-scene-${scene} ${ventScene.theme}` : ""}`} data-tone={tone ?? undefined}>
+    {ventScene
+      ? <div className="scene-backdrop" aria-hidden="true"><ventScene.Backdrop {...sceneProps} /></div>
+      : <div className="poster-art" aria-hidden="true"><span className="shape-sun" /><span className="shape-moon" /><span className="shape-ring" /><span className="shape-leaf" /><span className="shape-dot" /></div>}
 
     <header className="call-identity">
-      <span className="call-kicker">{mode === "vent" ? "TALK IT OUT" : "TODAY'S PAGE"}</span>
+      <span className="call-kicker">{ventScene ? ventScene.kicker : "TODAY'S PAGE"}</span>
       <h1>Vent</h1>
       <div className="call-state" aria-live="polite">{phase === "error" ? error : status}</div>
-      {mode === "vent" && <div className="scene-picker" role="radiogroup" aria-label="How do you want to let it out?">
-        {sceneOptions.map((option) => <button key={option.id} role="radio" aria-checked={scene === option.id} className={scene === option.id ? "selected" : ""} onClick={() => pickScene(option.id)}>
-          <span aria-hidden="true">{option.emoji}</span>{option.label}
-        </button>)}
-      </div>}
     </header>
 
     <div className="call-body">
-      {mode === "vent" && <CallScene scene={scene} />}
-      <div className={`listener-orb ${muted ? "muted" : ""} ${phase} gesture-${gesture}`} ref={levelRef} onClick={() => stopPlaybackRef.current()} role="button" tabIndex={-1} aria-label="Tap to interrupt VENT">
-        <span className="voice-ring" /><span className="voice-ring" />
-        <span className="speak-wave" /><span className="speak-wave" /><span className="speak-wave" />
-        <Image src="/vent-listener.png" alt="VENT, listening" width={300} height={300} priority />
-      </div>
+      {ventScene
+        ? <div className="scene-host" ref={levelRef} onClick={() => stopPlaybackRef.current()} role="button" tabIndex={-1} aria-label="Tap to interrupt VENT"><ventScene.Stage {...sceneProps} /></div>
+        : <div className={`listener-orb ${muted ? "muted" : ""} ${phase} gesture-${gesture}`} ref={levelRef} onClick={() => stopPlaybackRef.current()} role="button" tabIndex={-1} aria-label="Tap to interrupt VENT">
+          <span className="voice-ring" /><span className="voice-ring" />
+          <span className="speak-wave" /><span className="speak-wave" /><span className="speak-wave" />
+          <Image src="/vent-listener.png" alt="VENT, listening" width={300} height={300} priority />
+        </div>}
       {phase === "error" && <button className="retry-call" onClick={() => setAttempt((value) => value + 1)}>Call again</button>}
     </div>
 

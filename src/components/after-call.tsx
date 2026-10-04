@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { localDate } from "@/lib/mood";
 import type { JournalEntry } from "@/lib/types";
@@ -56,7 +55,7 @@ export function AfterCall({ call, onDone, onWritten }: { call: CallResult; onDon
     </section>}
 
     {state === "writing" && <section className="after-copy">
-      <div className="writing-mark"><Image src="/vent-listener.png" alt="" width={190} height={190} /></div>
+      <div className="writing-mark" aria-hidden="true"><span className="thinking-dots"><i /><i /><i /></span></div>
       <h1>Writing<br />today&apos;s <em>page…</em></h1>
       <p>Only what you said. Nothing more.</p>
     </section>}
@@ -68,7 +67,6 @@ export function AfterCall({ call, onDone, onWritten }: { call: CallResult; onDon
     </section>}
 
     {state === "choice" && <section className="after-copy">
-      <div className="writing-mark"><Image src="/vent-listener.png" alt="" width={190} height={190} /></div>
       {spoke ? <>
         <h1>Feel a little<br /><em>lighter?</em></h1>
         <p>Nothing from this call is kept unless you want it to be.</p>
