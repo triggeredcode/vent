@@ -11,12 +11,11 @@ Every piece of intelligence in VENT is an open-weight model running on your own 
 - **Vent** — a real phone call. VENT reacts like a friend would ("Wait, he blamed *you*?"), nudges you on, stays quiet when you're mid-thought, and never gives advice. When you hang up, nothing is kept unless you ask.
 - **Journal** — tell VENT about your day. When the call ends, Gemma writes a magazine-style page: mood arc, people, food, places, highlights, hard moments, things to remember, and the day retold in your own voice.
 - **Memories** — ask "When did I last mention Rahul?" or "What did I eat last Sunday?" and get an answer grounded only in your pages, with the days it came from.
-- **Let it out your way** — pick a mode on the Talk it out card, each its own world with its own character:
-  - **Breathe** (default): Puff, a cloud spirit, breathes with you on a pastel aurora.
-  - **Punch** (devil mode): a furious little devil boxer whose punches land when *your voice* gets loud — hit counter, combos, comic POWs.
-  - **Sweat**: Bolt does pull-ups faster the more you talk, with a rep counter and sets.
+- **Let it out your way.** Pick a mode on the Talk it out card. Each one is its own world with its own character:
+  - **Breathe** (default): Puff, a cloud spirit, breathes with you on a pastel aurora, and VENT stays calm.
+  - **Punch** (devil mode): a furious little devil boxer throws a punch whenever *your voice* gets loud. The bag wears down and bursts every 20 hits, with real impact sounds, and VENT gets fired up on your side.
   Gemma reads the mood of each line (fired up, heavy, tense, bright, calm) and the scene's colours follow.
-- **Let it go** — hang up on a vent and the call is crumpled like a page and tossed away. Nothing is kept.
+- **Let it go.** Hang up on a vent and the call's page dissolves into drifting specks. Nothing is kept.
 - Edit or delete any page, or forget its recording and keep the page.
 
 ## Open models at the core
@@ -28,33 +27,30 @@ Every piece of intelligence in VENT is an open-weight model running on your own 
 | Write the journal page (JSON schema) | Gemma 4 E4B | Ollama, local |
 | Answer memory questions | Gemma 4 E4B | Ollama, local |
 | Embeddings for memory search | nomic-embed-text | Ollama, local |
-| VENT's voice | Chatterbox-Turbo (cloned, MIT) or Kokoro-82M | `./voice`, local |
+| VENT's voice | Chatterbox-Turbo (your cloned voice, MIT), Kokoro-82M fallback | `./voice`, local |
 
 Measured warm on an M4 Pro: ~150–400 ms to transcribe a turn, ~400–550 ms to reply, then speech synthesis. The first reply is pre-warmed while the phone rings.
 
 ## Run it
 
-Requirements: Node.js 20+, pnpm, [Ollama](https://ollama.com), Python 3.12 + [uv](https://docs.astral.sh/uv/).
+Requirements: macOS on Apple Silicon (for the local voice), Node.js 20+, pnpm, [Ollama](https://ollama.com), and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-# 1. models
-ollama pull gemma4:e2b
-ollama pull gemma4:e4b
-ollama pull nomic-embed-text
-
-# 2. app
 pnpm install
-cp .env.example .env.local
-
-# 3. VENT's voice (first run downloads the model)
-pnpm voice
-
-# 4. in another terminal
-pnpm dev                # http://localhost:3000
-pnpm seed               # optional: load eleven sample days
+pnpm vent
 ```
 
-Use Chrome or Safari on `localhost` (microphone access needs a secure context). Laptop speakers are fine: VENT never listens while it is talking. Tap the mascot to interrupt it.
+`pnpm vent` does the rest: it starts Ollama and pulls the Gemma models on first run, starts VENT's local voice, starts the app, loads a few sample days into an empty journal and opens http://localhost:3000.
+
+Use Chrome or Safari (the microphone needs `localhost`). Laptop speakers are fine: VENT never listens while it talks. Tap the character to interrupt it.
+
+### Partners in one command
+
+```bash
+pnpm connect
+```
+
+This walks you through Sentry and ElevenLabs. It opens the right pages, checks each key for real (it sends Sentry a test event), clones your voice on ElevenLabs from your recording, generates the punch-mode sound effects, and writes everything to `.env.local`. Then run `pnpm vent` again.
 
 ## Optional partner integrations
 
@@ -62,7 +58,7 @@ All of these are off by default and switched on by environment variables (see `.
 
 - **MongoDB Atlas:** set `MONGODB_URI` to keep pages in Atlas. VENT creates an Atlas Vector Search index and retrieves pages by meaning, using embeddings computed locally. Works with Atlas cloud or `mongodb/mongodb-atlas-local`.
 - **Sentry:** set `SENTRY_DSN` to trace every call turn (`voice-turn` → `transcribe` → `listen` → `speak`), plus journal writing and memory answers, as `gen_ai` spans with latency and token counts. Content collection is fully disabled.
-- **ElevenLabs:** set `VENT_VOICE_PROVIDER=elevenlabs` and `ELEVENLABS_API_KEY` to swap the local voice for Flash v2.5 streaming. Only VENT's replies are sent, never your voice.
+- **ElevenLabs:** `pnpm connect` clones your voice on ElevenLabs (Instant Voice Clone from your own recording), generates the punch-mode sound effects with the Sound Effects API, and can make Flash v2.5 VENT's streaming voice, with per-mode delivery (calm, fired, bright). Only VENT's replies are sent, never your microphone.
 
 ## Validate
 

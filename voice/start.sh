@@ -12,6 +12,13 @@ fi
 
 export HF_HOME="${HF_HOME:-$PWD/.cache/huggingface}"
 export UV_HTTP_TIMEOUT="${UV_HTTP_TIMEOUT:-300}"
+
+# The owner's personal (cloned) voice is the default whenever a reference recording exists.
+# Opt out with VENT_TTS_CLONE=0, or pick another voice with VENT_TTS_DEFAULT_VOICE=af_heart.
+if [[ -f voices/owner-script.wav || -f voices/owner.wav ]]; then
+  export VENT_TTS_CLONE="${VENT_TTS_CLONE:-1}"
+  if [[ "$VENT_TTS_CLONE" == "1" ]]; then export VENT_TTS_DEFAULT_VOICE="${VENT_TTS_DEFAULT_VOICE:-owner}"; fi
+fi
 uv sync --quiet
 
 if [[ "${1:-}" == "--bg" ]]; then
