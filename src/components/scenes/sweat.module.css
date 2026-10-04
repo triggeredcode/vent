@@ -1,4 +1,4 @@
-/* ───────── SWEAT: a stadium poster. Lime field, black ink, hot pink + cobalt, a gym buddy on the bar. ───────── */
+/* ───────── SWEAT: a stadium poster. Lime field, black ink, hot pink + cobalt, a 3D gym buddy doing jacks. ───────── */
 
 .theme {
   --sw-lime: #c6f432;
@@ -139,8 +139,15 @@
 
 /* ── Stage ── */
 .stage { position: absolute; inset: 0; font-family: var(--sw-display); --burn: 0; }
-.figure { position: absolute; inset: 0 0 -4px; width: 100%; height: calc(100% + 4px); overflow: visible; transition: filter .4s ease, opacity .4s ease; }
-.stage[data-muted] .figure { filter: saturate(.25) brightness(1.05); opacity: .7; }
+/* The 3D buddy: a transparent WebGL canvas. It reaches up behind the HUD so raised arms never clip,
+   and its feet land just above the LED board. Until three.js has loaded, a pre-rendered still stands in. */
+.figure { position: absolute; left: -8%; right: -8%; top: -16%; bottom: calc(var(--sw-feet, 0px) - 6px); transition: filter .4s ease, opacity .4s ease; }
+.canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; opacity: 0; transition: opacity .35s ease; }
+.poster { position: absolute; left: 50%; bottom: 0; height: 100%; width: auto; transform: translateX(-50%); object-fit: contain; object-position: 50% 100%; transition: opacity .35s ease; }
+.stage[data-ready] .canvas { opacity: 1; }
+.stage[data-ready] .poster { opacity: 0; }
+.stage[data-muted] .figure { filter: saturate(.3) brightness(1.04); opacity: .72; }
+.stage[data-mode="slump"] .figure { filter: saturate(.55); }
 
 .hud { position: absolute; top: 4px; left: 0; right: 0; z-index: 2; display: flex; justify-content: space-between; align-items: flex-start; pointer-events: none; }
 .reps { position: relative; display: grid; justify-items: start; }
@@ -180,12 +187,11 @@
   font-weight: 800; letter-spacing: .12em; line-height: 1; text-transform: uppercase; transform: skewX(-12deg);
   border-left: 5px solid var(--sw-lime);
 }
-.stage[data-mode="pull"] .coach span { border-left-color: var(--sw-hot); }
+.stage[data-active] .coach span { border-left-color: var(--sw-hot); }
 
 /* ── Cover ── */
 .cover { position: relative; width: 100%; height: 100%; }
-.cover > svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-.coverDrops { pointer-events: none; }
+.cover img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 
 @media (max-height: 700px) {
   .theme { --sw-floor: 318px; }

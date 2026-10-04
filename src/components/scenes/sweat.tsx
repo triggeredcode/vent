@@ -1,33 +1,16 @@
 import { Barlow_Condensed } from "next/font/google";
+import Image from "next/image";
 import type { SceneModule } from "./types";
 import { SweatBackdrop } from "./sweat/backdrop";
-import { Drop, DropGradient, Figure } from "./sweat/figure";
-import { HANG_CY, hang, TOP_CY } from "./sweat/rig";
-import { SweatStage } from "./sweat/stage";
+import { COVER_SRC, SweatStage } from "./sweat/stage";
 import styles from "./sweat.module.css";
 
 const barlow = Barlow_Condensed({ subsets: ["latin"], weight: ["600", "700", "800", "900"], style: ["normal", "italic"], variable: "--sw-font", display: "swap" });
 
-/** Cover pose: near the top of a rep, teeth gritted, sweat flying. */
-function coverPose() {
-  const p = hang(HANG_CY + (TOP_CY - HANG_CY) * 0.82);
-  p.lfx = p.cx - 40; p.lfy = p.cy + 88;
-  p.rfx = p.cx + 36; p.rfy = p.cy + 90;
-  p.toe = 0.55; p.tilt = -2;
-  p.squint = 1; p.grit = 1; p.puff = 0.8; p.effort = 1; p.brow = 1; p.tails = -14;
-  p.sx = 1.03; p.sy = 0.97;
-  return p;
-}
-
+/** Home card: a still render of the 3D gym buddy mid jumping-jack (see scripts in public/models/CREDITS.md). */
 function SweatCover() {
   return <div className={styles.cover}>
-    <Figure pose={coverPose()} uid="cover" viewBox="20 54 280 280" align="xMidYMid meet" />
-    <svg className={styles.coverDrops} viewBox="20 54 280 280" aria-hidden="true">
-      <defs><DropGradient id="sw-cover-drop" /></defs>
-      <Drop transform="translate(84 92) rotate(-50) scale(1.15)" fill="url(#sw-cover-drop)" />
-      <Drop transform="translate(238 84) rotate(45) scale(1.3)" fill="url(#sw-cover-drop)" />
-      <Drop transform="translate(258 116) rotate(70) scale(.85)" fill="url(#sw-cover-drop)" />
-    </svg>
+    <Image src={COVER_SRC} alt="" width={600} height={600} unoptimized />
   </div>;
 }
 
