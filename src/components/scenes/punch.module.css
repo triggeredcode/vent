@@ -322,18 +322,26 @@
 .bagText {
   font-family: var(--punch-anton), Impact, sans-serif;
   font-size: 26px;
-  fill: #c3150b;
+  fill: #b3160c;
   letter-spacing: .04em;
-}
-.pow { opacity: 0; transform-origin: 0 0; }
-.powText {
-  font-family: var(--punch-anton), Impact, sans-serif;
-  font-size: 34px;
-  fill: #d0120a;
-  stroke: #1d0604;
-  stroke-width: 2px;
   paint-order: stroke;
-  letter-spacing: .02em;
+  stroke: rgba(255, 255, 255, .35);
+  stroke-width: .6px;
+}
+
+/* Impact effects: every piece is hidden until the engine animates it with WAAPI. */
+.fx { pointer-events: none; }
+.fx > * { opacity: 0; }
+.fx [data-fx="flash"], .fx [data-fx="cinder"], .fx [data-fx="spark"] { mix-blend-mode: screen; }
+.fx [data-fx="cinder"] { filter: drop-shadow(0 0 2px #ff8a2a); }
+.fx [data-fx="ring"] { filter: blur(.6px) drop-shadow(0 0 3px rgba(255, 150, 60, .8)); }
+.fx [data-fx="spark"] { filter: drop-shadow(0 0 2px rgba(255, 170, 70, .9)); }
+.fxWord {
+  font-family: var(--punch-anton), Impact, sans-serif;
+  font-size: 19px;
+  letter-spacing: .14em;
+  fill: #fff4e2;
+  filter: drop-shadow(0 0 5px rgba(255, 120, 40, .9)) drop-shadow(0 1px 1px rgba(40, 4, 2, .9));
 }
 
 .aura {
@@ -350,12 +358,16 @@
 
 /* ───────── Devil parts ───────── */
 .devil { transition: filter .8s ease; }
-.armOutline { fill: none; stroke: #1d0604; stroke-width: 19; stroke-linecap: round; }
-.armLead { fill: none; stroke: #e2281a; stroke-width: 12.5; stroke-linecap: round; }
-.armRear { fill: none; stroke: #b3170f; stroke-width: 12.5; stroke-linecap: round; }
+/* Arms are soft tubes: a shaded core, the base colour, and a highlight along the top. */
+.armAo { fill: none; stroke: #1a0000; stroke-opacity: .28; stroke-width: 15; stroke-linecap: round; transform: translate(2px, 5px); }
+.armShade { fill: none; stroke: #5e0909; stroke-width: 15; stroke-linecap: round; }
+.armLead { fill: none; stroke: #d42a1b; stroke-width: 11.5; stroke-linecap: round; }
+.armRear { fill: none; stroke: #9a150e; stroke-width: 11.5; stroke-linecap: round; }
+.armHi { fill: none; stroke: #ff9472; stroke-opacity: .5; stroke-width: 4; stroke-linecap: round; transform: translate(-1px, -3px); }
+.armHiRear { stroke-opacity: .28; }
 .gloveArt { transition: transform .2s ease; }
-.hornGlow { opacity: .55; }
-.stage[data-tone="fired_up"] .hornGlow { stroke: #ffd23f; opacity: 1; filter: drop-shadow(0 0 4px #ff7a1a); }
+.hornGlow { opacity: .5; }
+.stage[data-tone="fired_up"] .hornGlow { stroke: #ffe7a8; opacity: .85; }
 
 .face { transform: translateX(7px); transition: transform .35s cubic-bezier(.3, 1.4, .5, 1); }
 .pupil { transform: translateX(2.5px); transition: transform .3s ease; }
