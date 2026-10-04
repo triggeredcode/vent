@@ -37,3 +37,12 @@ The listener's system prompt is pre-filled while the phone rings, so the first t
 5. A reviewed crisis policy with qualified specialists before inviting anyone beyond friends.
 6. A fine-tuned listener only if real sessions show a measurable gap (unsolicited-advice rate, reply length, interruption rate).
 
+## Integrations
+
+| Integration | Role in VENT | How it's enabled |
+| --- | --- | --- |
+| Gemma (Ollama) | All model work: hearing, replying, journal writing, memory | Always (local) |
+| Temporal | Durable, retried journal writing after every call | On by default (`pnpm vent`) |
+| MongoDB Atlas | Synced journal + Atlas Vector Search for memory | `MONGODB_URI` |
+| Sentry | `gen_ai` traces of every call turn, no content | `pnpm connect` |
+| ElevenLabs | Your cloned voice and studio punch sound effects | `pnpm connect` |
