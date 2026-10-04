@@ -60,6 +60,24 @@ All of these are off by default and switched on by environment variables (see `.
 - **Sentry:** set `SENTRY_DSN` to trace every call turn (`voice-turn` → `transcribe` → `listen` → `speak`), plus journal writing and memory answers, as `gen_ai` spans with latency and token counts. Content collection is fully disabled.
 - **ElevenLabs:** `pnpm connect` clones your voice on ElevenLabs (Instant Voice Clone from your own recording), generates the punch-mode sound effects with the Sound Effects API, and can make Flash v2.5 VENT's streaming voice, with per-mode delivery (calm, fired, bright). Only VENT's replies are sent, never your microphone.
 
+## Temporal (optional)
+
+Writing the page after a call is a three-step pipeline on a laptop: Gemma drafts the day (slow, can time out while a model loads), `nomic-embed-text` embeds it, and the page is saved. With `TEMPORAL_ADDRESS` set, `POST /api/journal` runs it as the `writeJournalPage` workflow instead, so a page is never lost:
+
+- each step is an activity with its own timeout and retry policy (drafting: 3 min per try, up to 5 tries with backoff, heartbeats so a dead worker is noticed in ~20 s; "nothing was said" fails fast without retries);
+- the call's turns are the workflow input, so if Ollama hiccups or the worker restarts mid-way, Temporal resumes from the last finished step;
+- the workflow id comes from the request (or a hash of the call), so tapping "Try again" joins the same run instead of writing a second page.
+
+```bash
+brew install temporal
+temporal server start-dev          # server on :7233, UI on http://localhost:8233
+pnpm worker                        # task queue "vent-journal"
+TEMPORAL_ADDRESS=localhost:7233 pnpm dev
+pnpm exec tsx scripts/temporal-smoke.ts   # optional: write a sample page through the workflow
+```
+
+Watch each page being written (and retried) in the Temporal UI at http://localhost:8233. If Temporal is unreachable or no worker is running, the app logs it and writes the page directly, exactly as without Temporal.
+
 ## Validate
 
 ```bash

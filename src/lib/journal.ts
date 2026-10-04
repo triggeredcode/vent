@@ -48,12 +48,26 @@ export function entryFromExtraction(extracted: Partial<ExtractedDay>, turns: Cal
   };
 }
 
-export async function createEntryFromCall(turns: CallTurn[], date: string, keepTranscript: boolean) {
+/**
+ * Writing a page is three steps — draft (Gemma extraction), embed, save — so the
+ * optional Temporal workflow (src/temporal) can run each one as a retried activity.
+ * The direct path below composes the same steps in order.
+ */
+export async function draftEntry(turns: CallTurn[], date: string, keepTranscript: boolean) {
   const spoken = turns.filter((turn) => turn.text.trim());
   const extracted = await extractDay(spoken, displayDateFor(date));
   const entry = entryFromExtraction(extracted, spoken, date);
   if (!keepTranscript) delete entry.transcript;
-  await getStore().save({ ...entry, embedding: await embed(pageText(entry)) });
+  return entry;
+}
+
+export const embedEntry = (entry: JournalEntry) => embed(pageText(entry));
+
+export const saveEntry = (entry: JournalEntry, embedding: number[] | undefined) => getStore().save({ ...entry, embedding });
+
+export async function createEntryFromCall(turns: CallTurn[], date: string, keepTranscript: boolean) {
+  const entry = await draftEntry(turns, date, keepTranscript);
+  await saveEntry(entry, await embedEntry(entry));
   return entry;
 }
 
