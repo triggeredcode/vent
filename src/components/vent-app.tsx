@@ -5,6 +5,7 @@ import { AfterCall } from "./after-call";
 import { CallScreen, type CallResult } from "./call-screen";
 import { DayScreen } from "./day-screen";
 import { HomeScreen } from "./home-screen";
+import { BrandMark } from "./brand";
 import { Icon, type IconName } from "./icon";
 import { JournalScreen } from "./journal-screen";
 import { MemoryScreen } from "./memory-screen";
@@ -12,20 +13,20 @@ import type { CallMode, JournalEntry, Screen } from "@/lib/types";
 
 function TopBar({ onHome }: { onHome: () => void }) {
   return <header className="topbar">
-    <button className="brand" onClick={onHome} aria-label="VENT home"><span className="brand-mark">V</span><span>VENT</span></button>
-    <span className="topbar-dot" aria-hidden="true" />
+    <button className="brand" onClick={onHome} aria-label="Haan home"><BrandMark /><span className="wordmark">haan<i>.</i></span></button>
+    <span className="topbar-note">your listening friend</span>
   </header>;
 }
 
 function BottomNav({ screen, go }: { screen: Screen; go: (screen: Screen) => void }) {
-  const items: { screen: Screen; icon: IconName; label: string }[] = [
-    { screen: "home", icon: "home", label: "Home" },
-    { screen: "journal", icon: "book", label: "Journal" },
-    { screen: "memory", icon: "spark", label: "Memories" },
+  const items: { screen: Screen; icon: IconName; label: string; tint: string }[] = [
+    { screen: "home", icon: "navHome", label: "Home", tint: "var(--sun)" },
+    { screen: "journal", icon: "navJournal", label: "Journal", tint: "var(--sky)" },
+    { screen: "memory", icon: "navMemory", label: "Memories", tint: "var(--coral)" },
   ];
   return <nav className="bottom-nav" aria-label="Primary navigation">
-    {items.map((item) => <button key={item.screen} onClick={() => go(item.screen)} className={screen === item.screen || (screen === "day" && item.screen === "journal") ? "active" : ""}>
-      <Icon name={item.icon} /><span>{item.label}</span>
+    {items.map((item) => <button key={item.screen} onClick={() => go(item.screen)} className={screen === item.screen || (screen === "day" && item.screen === "journal") ? "active" : ""} style={{ "--tint": item.tint } as React.CSSProperties}>
+      <span className="nav-icon"><Icon name={item.icon} /></span><span>{item.label}</span>
     </button>)}
   </nav>;
 }
@@ -70,7 +71,7 @@ export function VentApp() {
   const selected = entries.find((entry) => entry.id === selectedId);
   const fullBleed = screen === "call" || screen === "after-call";
 
-  let content: React.ReactNode = <HomeScreen entries={entries} startCall={startCall} openEntry={openEntry} />;
+  let content: React.ReactNode = <HomeScreen entries={entries} startCall={startCall} openEntry={openEntry} openJournal={() => navigate("journal")} />;
   if (screen === "journal") content = <JournalScreen entries={entries} loaded={loaded} openEntry={openEntry} startCall={startCall} />;
   if (screen === "memory") content = <MemoryScreen entries={entries} openEntry={openEntry} />;
   if (screen === "day" && selected) content = <DayScreen key={selected.id} entry={selected} back={() => navigate("journal")} onChange={refresh} onDeleted={() => { void refresh(); navigate("journal"); }} />;

@@ -60,7 +60,7 @@ export function AfterCall({ call, onDone, onWritten }: { call: CallResult; onDon
         </div>
       </> : <>
         <h1>Another<br /><em>time.</em></h1>
-        <p>VENT is here whenever you want to talk.</p>
+        <p>Haan is here whenever you want to talk.</p>
         <div className="after-actions"><button className="after-primary" onClick={onDone}>Back home</button></div>
       </>}
     </section>}

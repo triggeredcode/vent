@@ -34,8 +34,8 @@ const START_FRAMES = 2;
 const END_SILENCE_FRAMES = 11; // ~470 ms of quiet ends a turn
 const MIN_TURN_SECONDS = 0.45;
 const MAX_TURN_SECONDS = 25;
-// Speakers bleed into the mic, so VENT never listens to itself: the mic is deaf while
-// VENT speaks and for a short echo tail afterwards. Tap the mascot to cut VENT off.
+// Speakers bleed into the mic, so Haan never listens to itself: the mic is deaf while
+// Haan speaks and for a short echo tail afterwards. Tap the mascot to cut Haan off.
 const ECHO_TAIL_MS = 450;
 
 function formatTime(total: number) {
@@ -69,7 +69,6 @@ export function CallScreen({ mode, onEnd }: { mode: CallMode; onEnd: (result: Ca
   const [muted, setMuted] = useState(false);
   const [speakerOn, setSpeakerOn] = useState(true);
   const [gesture, setGesture] = useState<ListenerAction | "rest">("rest");
-  const [caption, setCaption] = useState("");
   const [attempt, setAttempt] = useState(0);
 
   const turnsRef = useRef<CallTurn[]>([]);
@@ -83,6 +82,32 @@ export function CallScreen({ mode, onEnd }: { mode: CallMode; onEnd: (result: Ca
   const speakerRef = useRef(true);
   const stopPlaybackRef = useRef<() => void>(() => undefined);
   const deafUntilRef = useRef(0);
+  const audioContextRef = useRef<AudioContext | null>(null);
+
+  /** Drives the mascot from Haan's own voice: louder syllables, bigger bounce. */
+  const followVoice = useCallback((audio: HTMLAudioElement) => {
+    const context = audioContextRef.current;
+    const orb = levelRef.current;
+    if (!context || !orb) return () => undefined;
+    const source = context.createMediaElementSource(audio);
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 512;
+    source.connect(analyser);
+    analyser.connect(context.destination);
+    const samples = new Uint8Array(analyser.fftSize);
+    let frame = 0;
+    let smooth = 0;
+    const tick = () => {
+      analyser.getByteTimeDomainData(samples);
+      let sum = 0;
+      for (const sample of samples) sum += ((sample - 128) / 128) ** 2;
+      smooth = smooth * 0.6 + Math.min(1, Math.sqrt(sum / samples.length) * 5) * 0.4;
+      orb.style.setProperty("--voice", smooth.toFixed(3));
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => { cancelAnimationFrame(frame); orb.style.setProperty("--voice", "0"); source.disconnect(); analyser.disconnect(); };
+  }, []);
   const levelRef = useRef<HTMLDivElement>(null);
   const liveRef = useRef(false);
   const secondsRef = useRef(0);
@@ -99,8 +124,7 @@ export function CallScreen({ mode, onEnd }: { mode: CallMode; onEnd: (result: Ca
   const speak = useCallback(async (text: string, action: ListenerAction | "rest") => {
     if (!text || !liveRef.current) return;
     setGesture(action);
-    setCaption(text);
-    if (!speakerRef.current) { await wait(Math.min(2600, 500 + text.length * 45)); setCaption(""); setGesture("rest"); return; }
+    if (!speakerRef.current) { await wait(Math.min(2600, 500 + text.length * 45)); setGesture("rest"); return; }
     speakingRef.current = true;
     setPhase("speaking");
     try {
@@ -109,7 +133,8 @@ export function CallScreen({ mode, onEnd }: { mode: CallMode; onEnd: (result: Ca
       const url = URL.createObjectURL(await response.blob());
       await new Promise<void>((resolve) => {
         const audio = new Audio(url);
-        const done = () => { URL.revokeObjectURL(url); stopPlaybackRef.current = () => undefined; resolve(); };
+        const stopLevels = followVoice(audio);
+        const done = () => { stopLevels(); URL.revokeObjectURL(url); stopPlaybackRef.current = () => undefined; resolve(); };
         stopPlaybackRef.current = () => { audio.pause(); done(); };
         audio.onended = done;
         audio.onerror = done;
@@ -133,11 +158,10 @@ export function CallScreen({ mode, onEnd }: { mode: CallMode; onEnd: (result: Ca
       deafUntilRef.current = performance.now() + ECHO_TAIL_MS;
       speakingRef.current = false;
       stopPlaybackRef.current = () => undefined;
-      setCaption("");
       setGesture("rest");
       settle();
     }
-  }, [settle]);
+  }, [followVoice, settle]);
 
   const processNextRef = useRef<() => Promise<void>>(async () => undefined);
   const processNext = useCallback(async () => {
@@ -210,6 +234,7 @@ export function CallScreen({ mode, onEnd }: { mode: CallMode; onEnd: (result: Ca
       liveRef.current = false;
       try {
         context = new AudioContext();
+        audioContextRef.current = context;
         await context.resume();
         const [health] = await Promise.all([fetch(`/api/voice/status?mode=${mode}`, { cache: "no-store" }), wait(700)]);
         if (!health.ok) throw new Error("models");
@@ -273,7 +298,7 @@ export function CallScreen({ mode, onEnd }: { mode: CallMode; onEnd: (result: Ca
       } catch (problem) {
         if (disposed) return;
         setPhase("error");
-        setError(problem instanceof DOMException && problem.name === "NotAllowedError" ? "VENT needs your microphone to hear you." : "VENT couldn't connect. Is Ollama running?");
+        setError(problem instanceof DOMException && problem.name === "NotAllowedError" ? "Haan needs your microphone to hear you." : "Haan couldn't connect. Is Ollama running?");
       }
     };
 
@@ -298,17 +323,17 @@ export function CallScreen({ mode, onEnd }: { mode: CallMode; onEnd: (result: Ca
     <div className="poster-art" aria-hidden="true"><span className="shape-sun" /><span className="shape-moon" /><span className="shape-ring" /><span className="shape-leaf" /><span className="shape-dot" /></div>
 
     <header className="call-identity">
-      <span className="call-kicker">{mode === "vent" ? "VENT · LISTENING LINE" : "VENT · TODAY'S PAGE"}</span>
-      <h1>{mode === "vent" ? "Vent" : "Journal"}</h1>
+      <span className="call-kicker">{mode === "vent" ? "TALK IT OUT" : "TODAY'S PAGE"}</span>
+      <h1>Haan</h1>
       <div className="call-state" aria-live="polite">{phase === "error" ? error : status}</div>
     </header>
 
     <div className="call-body">
-      <div className={`listener-orb ${muted ? "muted" : ""} ${phase} gesture-${gesture}`} ref={levelRef} onClick={() => stopPlaybackRef.current()} role="button" tabIndex={-1} aria-label="Tap to interrupt VENT">
+      <div className={`listener-orb ${muted ? "muted" : ""} ${phase} gesture-${gesture}`} ref={levelRef} onClick={() => stopPlaybackRef.current()} role="button" tabIndex={-1} aria-label="Tap to interrupt Haan">
         <span className="voice-ring" /><span className="voice-ring" />
-        <Image src="/vent-listener.png" alt="VENT listener" width={300} height={300} priority />
+        <span className="speak-wave" /><span className="speak-wave" /><span className="speak-wave" />
+        <Image src="/vent-listener.png" alt="Haan, listening" width={300} height={300} priority />
       </div>
-      <p className={`call-caption ${caption ? "visible" : ""}`}>{caption}</p>
       {phase === "error" && <button className="retry-call" onClick={() => setAttempt((value) => value + 1)}>Call again</button>}
     </div>
 

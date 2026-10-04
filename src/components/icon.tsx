@@ -1,10 +1,13 @@
 import type { SVGProps } from "react";
 
-export type IconName = "home" | "book" | "spark" | "phone" | "mic" | "micOff" | "audio" | "audioOff" | "keypad" | "plus" | "video" | "person" | "close" | "arrow" | "search" | "shield" | "calendar" | "chevron" | "more" | "heart" | "sun";
+export type IconName = "navHome" | "navJournal" | "navMemory" | "home" | "book" | "spark" | "phone" | "mic" | "micOff" | "audio" | "audioOff" | "keypad" | "plus" | "video" | "person" | "close" | "arrow" | "search" | "shield" | "calendar" | "chevron" | "more" | "heart" | "sun";
 
 export function Icon({ name, ...props }: SVGProps<SVGSVGElement> & { name: IconName }) {
   const common = { fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
   const paths: Record<IconName, React.ReactNode> = {
+    navHome: <><path d="M3.5 20.5h17" /><path d="M6 20.5v-8.5a6 6 0 0 1 12 0v8.5" /><circle cx="12" cy="12.5" r="2.2" /></>,
+    navJournal: <><rect x="5" y="3" width="14" height="18" rx="2.5" /><path d="M9 3v18M12.5 8.5h3.5M12.5 12h3.5" /><path d="M15 3v4.5l-1.25-.9-1.25.9V3" /></>,
+    navMemory: <><path d="M7.2 17.5h9.6a4 4 0 0 0 .6-7.95 5.6 5.6 0 0 0-10.9-.4A4.2 4.2 0 0 0 7.2 17.5z" /><circle cx="6" cy="20.6" r="1" /><path d="m12 9.8.75 1.55 1.7.25-1.22 1.2.29 1.7L12 13.7l-1.52.8.29-1.7-1.22-1.2 1.7-.25z" /></>,
     home: <><path d="m3 11 9-8 9 8" /><path d="M5.5 9.5V21h13V9.5M9 21v-7h6v7" /></>,
     book: <><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H11v16H6.5A2.5 2.5 0 0 0 4 21.5z" /><path d="M20 5.5A2.5 2.5 0 0 0 17.5 3H13v16h4.5a2.5 2.5 0 0 1 2.5 2.5z" /></>,
     spark: <><path d="m12 2 1.5 5.5L19 9l-5.5 1.5L12 16l-1.5-5.5L5 9l5.5-1.5z" /><path d="m19 15 .7 2.3L22 18l-2.3.7L19 21l-.7-2.3L16 18l2.3-.7z" /></>,

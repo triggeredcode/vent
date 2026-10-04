@@ -94,7 +94,7 @@ export async function getModelStatus(mode?: CallMode) {
     const required = [...new Set([voiceModel(), listenerModel(), journalModel(), embeddingModel()])];
     const missing = required.filter((model) => !has(model));
     const live = [...new Set([voiceModel(), listenerModel()])];
-    // Both call models must be in memory before VENT "picks up"; the journal model can load later.
+    // Both call models must be in memory before Haan "picks up"; the journal model can load later.
     await Promise.all(live.filter((model) => !missing.includes(model)).map((model) =>
       (model === listenerModel() && mode ? primeListener(mode) : warm(model)).catch(() => undefined)));
     if (!missing.includes(journalModel()) && !live.includes(journalModel())) void warm(journalModel()).catch(() => undefined);
@@ -200,7 +200,7 @@ export interface ExtractedDay {
 }
 
 export async function extractDay(turns: CallTurn[], today: string): Promise<Partial<ExtractedDay>> {
-  const conversation = turns.map((turn) => `${turn.speaker === "you" ? "CALLER" : "VENT"}: ${turn.text}`).join("\n");
+  const conversation = turns.map((turn) => `${turn.speaker === "you" ? "CALLER" : "HAAN"}: ${turn.text}`).join("\n");
   const { content } = await chat({
     model: journalModel(),
     messages: [

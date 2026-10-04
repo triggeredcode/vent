@@ -6,10 +6,10 @@ const newsreader = Newsreader({ subsets: ["latin"], style: ["normal", "italic"],
 const manrope = Manrope({ subsets: ["latin"], variable: "--font-manrope", display: "swap" });
 
 export const metadata: Metadata = {
-  title: "VENT — Talk it out",
+  title: "Haan — a friend who listens",
   description: "A private voice-first journal that listens before it speaks.",
-  applicationName: "VENT",
-  appleWebApp: { capable: true, title: "VENT", statusBarStyle: "default" },
+  applicationName: "Haan",
+  appleWebApp: { capable: true, title: "Haan", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = { themeColor: "#f8f6f0", width: "device-width", initialScale: 1, viewportFit: "cover" };

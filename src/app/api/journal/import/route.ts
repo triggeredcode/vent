@@ -6,7 +6,7 @@ import type { JournalEntry } from "@/lib/types";
 
 export const maxDuration = 120;
 
-/** Restores pages from a VENT export (GET /api/journal) or the bundled sample days. */
+/** Restores pages from a Haan export (GET /api/journal) or the bundled sample days. */
 export async function POST(request: Request) {
   const body = await request.json() as { entries?: Array<Partial<JournalEntry> & { moodScore?: number }> };
   const store = getStore();
