@@ -168,7 +168,7 @@ async function setupElevenLabs(env) {
     if (response.ok) { voiceId = (await response.json()).voice_id; ok(`Your voice is ready on ElevenLabs (voice id ${voiceId})`); }
     else fail(`Voice cloning failed (${response.status}): ${(await response.text()).slice(0, 160)}`);
   } else if (!reference) {
-    console.log(dim("    No voice recording found (run ./voice/record.sh to make one). Using a calm ElevenLabs voice instead."));
+    console.log(dim("    No voice recording found (run pnpm voice:record to make one). Using a calm ElevenLabs voice instead."));
   }
   if (voiceId) updates.ELEVENLABS_VOICE_ID = voiceId;
 

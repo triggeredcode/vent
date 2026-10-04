@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Records the owner's voice reference for the cloned voice: ./voice/record.sh
+# Records your voice reference for the cloned voice: pnpm voice:record (or ./voice/record.sh)
 # Saves to voice/voices/owner-script.wav (gitignored), which the server prefers over other references.
 set -euo pipefail
 cd "$(dirname "$0")"

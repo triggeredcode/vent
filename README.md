@@ -9,7 +9,7 @@ Every piece of intelligence in VENT is an open-weight model running on your own 
 ## What it does
 
 - **Vent** — a real phone call. VENT reacts like a friend would ("Wait, he blamed *you*?"), nudges you on, stays quiet when you're mid-thought, and never gives advice. When you hang up, nothing is kept unless you ask.
-- **Journal** — tell VENT about your day. When the call ends, Gemma writes a magazine-style page: mood arc, people, food, places, highlights, hard moments, things to remember, and the day retold in your own voice.
+- **Journal** — tell VENT about your day. When the call ends, Gemma writes a magazine-style page: mood arc, people, food, places, highlights, hard moments, things to remember, and the day retold in your own words.
 - **Memories** — ask "When did I last mention Rahul?" or "What did I eat last Sunday?" and get an answer grounded only in your pages, with the days it came from.
 - **Let it out your way.** Pick a mode on the Talk it out card. Each one is its own world with its own character:
   - **Breathe** (default): Puff, a cloud spirit, breathes with you on a pastel aurora, and VENT stays calm.
@@ -44,17 +44,18 @@ pnpm vent
 
 Use Chrome or Safari (the microphone needs `localhost`). Laptop speakers are fine: VENT never listens while it talks. Tap the character to interrupt it.
 
-### Give VENT your own voice (optional, ~1 minute)
+### Give VENT your own voice (optional, ~2 minutes)
 
-Out of the box VENT speaks with Kokoro's `af_heart`, a natural local voice. To make it sound like you (or a friend who agrees to it):
+Out of the box VENT speaks with Kokoro's `af_heart`, a natural local voice. You can make it talk in **your** voice, or a friend's if they agree:
 
-```bash
-pnpm voice:record
-```
+1. **Record.** Run `pnpm voice:record`. It shows a short script (`voice/SCRIPT.md`), counts down and records 45 seconds. Just read it like you're talking to a friend.
+2. **It cleans the take.** It trims the silences, removes low rumble and evens out the loudness.
+3. **It switches the voice.** The voice server restarts and clones your voice locally with Chatterbox-Turbo (MIT), at about 0.5 s per line on Apple Silicon. The first time, it downloads the cloning model (~1.2 GB).
+4. **Optional, ElevenLabs.** `pnpm connect` can clone the same recording on your ElevenLabs account, so the voice also works through ElevenLabs Flash.
 
-It shows a short script (`voice/SCRIPT.md`), counts down, records 45 seconds and cleans the take: it trims silence, removes rumble and normalises loudness. Then it restarts the voice server, which clones the voice locally with Chatterbox-Turbo (about 0.5 s per line on Apple Silicon). The recording stays in `voice/voices/`, which is gitignored. Delete that folder to go back to the default voice.
+Your recording stays in `voice/voices/`, which is gitignored and never committed. To go back to the default voice, delete that folder and run `pnpm vent`.
 
-Tips for a clean result: use a quiet room, sit a hand's width from the mic, and talk calmly, the way you would to a friend.
+Tips for a clean result: use a quiet room, no fan or music, sit about a hand's width from the mic, and talk calmly.
 
 ### Partners in one command
 

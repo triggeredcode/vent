@@ -4,11 +4,10 @@ A local text-to-speech server for VENT. It uses **Kokoro-82M** (Apache-2.0, hexg
 **mlx-audio** (`mlx-community/Kokoro-82M-bf16`). Text goes through **misaki**, the same G2P Kokoro was trained with.
 Homebrew `espeak-ng` covers words misaki doesn't know and Hindi.
 
-It also has one **cloned voice, `owner`**: zero-shot voice cloning with **Chatterbox-Turbo** (Resemble AI, **MIT** licence),
+It can also speak in **your own voice, `owner`**: zero-shot voice cloning with **Chatterbox-Turbo** (Resemble AI, **MIT** licence),
 running on MLX through mlx-audio (`mlx-community/chatterbox-turbo-8bit`, plus `mlx-community/S3TokenizerV2` for conditioning).
-The voice is the product owner's own, used with his explicit permission. **It's off by default** (the owner asked for it to be removed):
-the server only loads it when started with `VENT_TTS_CLONE=1`, e.g. `VENT_TTS_CLONE=1 ./voice/start.sh --bg`. The reference audio in
-`voice/voices/` is kept, but it isn't read unless the clone is enabled.
+Record a reference with `pnpm voice:record`. `start.sh` then enables the clone automatically (`VENT_TTS_CLONE=1`) and makes it the default
+voice. With no recording, VENT uses Kokoro. Set `VENT_TTS_CLONE=0` to keep Kokoro even when a recording exists.
 
 Why this engine: on an M4 Pro, MLX was about 3.5x faster than `kokoro-onnx` on CPU (148 ms vs 524 ms for the
 same sentence). misaki's English pronunciation is also better than plain espeak.
@@ -23,7 +22,7 @@ curl -s http://127.0.0.1:8880/health
 
 `start.sh` installs espeak-ng with brew if it's missing, runs `uv sync` (`.venv`), sets `HF_HOME=voice/.cache/huggingface`, and
 starts the server on `127.0.0.1:8880`. At startup it loads the model and warms it up, so the first request is fast.
-The very first run downloads about 330 MB for Kokoro. With `VENT_TTS_CLONE=1` it also downloads about 1.2 GB for Chatterbox-Turbo 8-bit and the S3 tokenizer.
+The very first run downloads about 330 MB for Kokoro. The first run after you record a voice also downloads about 1.2 GB for Chatterbox-Turbo 8-bit and the S3 tokenizer.
 Warmup takes about 3.5 s by default, or about 6 s (10 s or more in total) with the clone.
 
 ## API (OpenAI-compatible)
@@ -55,12 +54,12 @@ Warmup takes about 3.5 s by default, or about 6 s (10 s or more in total) with t
 - For Hinglish written in Latin script, `af_heart` sounds more natural. The Hindi voices read through Hindi espeak G2P.
 - OpenAI names are aliased too: `alloy`, `nova`, `shimmer`, `echo`, `onyx`, `fable`.
 
-## Cloned voice (`owner`, opt-in: `VENT_TTS_CLONE=1`)
+## Your cloned voice (`owner`)
 
 - **Reference clip.** At startup the server uses the first of these files that exists: `voice/voices/owner-script.wav` (a scripted recording),
   then `voice/voices/owner.wav` (a cleaned 16 s clip). Use a clip longer than 5 s; only the first 10 to 15 s are used. The speaker
   conditioning (voice embedding and prompt tokens) is computed **once** at startup and cached. To pick up a new clip, restart the server.
-  `voice/voices/` is gitignored, so never commit the audio.
+  `voice/voices/` is gitignored, so the audio is never committed. `pnpm voice:record` writes `owner-script.wav` and restarts the server.
 - **No reference?** Then the clone isn't loaded, `owner` maps to the default voice, and Kokoro works exactly as before. A load failure
   is logged and is also non-fatal.
 - **Settings.** `VENT_TTS_CLONE_MODEL` defaults to `mlx-community/chatterbox-turbo-8bit`. `mlx-community/chatterbox-turbo-fp16` is
