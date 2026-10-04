@@ -17,7 +17,7 @@ type Phase = "connecting" | "ringing" | "listening" | "hearing" | "thinking" | "
 
 const greetings: Record<CallMode, string[]> = {
   vent: ["Hey, you. What's going on?", "Hey. I've got time — what's up?", "Hi there. Talk to me.", "Hey! Okay, what happened?"],
-  journal: ["Hey! So, how was today?", "Hi! Tell me about your day.", "Hey you. How did today go?", "Hey! Walk me through your day."],
+  journal: ["Hey! So what's been happening today?", "Hi! Okay, tell me everything — how was today?", "Hey you! What did today look like?", "Hey! I want the full story — how was your day?"],
 };
 
 const statusCopy: Record<Phase, string> = {
@@ -74,7 +74,7 @@ export function CallScreen({ mode, scene, onEnd }: { mode: CallMode; scene: Vent
   const [gesture, setGesture] = useState<ListenerAction | "rest">("rest");
   const [attempt, setAttempt] = useState(0);
   const [tone, setTone] = useState<ListenerTone | null>(null);
-  const flavor = mode === "vent" ? sceneFlavor[scene] : "calm";
+  const flavor: CallFlavor = mode === "vent" ? sceneFlavor[scene] : "bright";
   const levelListenersRef = useRef(new Set<(level: number) => void>());
   const subscribeLevel = useCallback((listener: (level: number) => void) => {
     levelListenersRef.current.add(listener);

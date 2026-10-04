@@ -34,8 +34,8 @@ export type CallMode = "vent" | "journal";
 
 export type ListenerAction = "silence" | "acknowledge" | "follow_up" | "clarify" | "reflect_briefly";
 
-/** How VENT sounds on a talk-it-out call: Breathe → calm, Punch → fired, Sweat → breathless. */
-export type CallFlavor = "calm" | "fired" | "breathless";
+/** How VENT sounds: Breathe → calm, Punch → fired, Sweat → breathless, Journal → bright. */
+export type CallFlavor = "calm" | "fired" | "breathless" | "bright";
 
 export type ListenerTone = "fired_up" | "heavy" | "tense" | "bright" | "calm";
 

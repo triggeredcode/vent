@@ -1,7 +1,7 @@
 import { traced } from "./telemetry";
 import type { CallFlavor } from "./types";
 
-export const asFlavor = (value: unknown): CallFlavor => value === "fired" || value === "breathless" ? value : "calm";
+export const asFlavor = (value: unknown): CallFlavor => value === "fired" || value === "breathless" || value === "bright" ? value : "calm";
 
 export type VoiceProvider = "local" | "elevenlabs";
 
@@ -22,6 +22,13 @@ export async function voiceStatus() {
   }
 }
 
+const elevenLabsSettings: Record<CallFlavor, Record<string, number>> = {
+  calm: { stability: 0.5, similarity_boost: 0.75, style: 0.15, speed: 0.95 },
+  bright: { stability: 0.4, similarity_boost: 0.75, style: 0.35, speed: 1.04 },
+  fired: { stability: 0.3, similarity_boost: 0.75, style: 0.6, speed: 1.12 },
+  breathless: { stability: 0.35, similarity_boost: 0.75, style: 0.45, speed: 1.05 },
+};
+
 /** Returns a streaming audio response from the configured voice. */
 export async function synthesize(text: string, flavor: CallFlavor = "calm"): Promise<Response> {
   const provider = voiceProvider();
@@ -35,11 +42,7 @@ export async function synthesize(text: string, flavor: CallFlavor = "calm"): Pro
         body: JSON.stringify({
           text,
           model_id: process.env.ELEVENLABS_MODEL ?? "eleven_flash_v2_5",
-          voice_settings: flavor === "fired"
-            ? { stability: 0.3, similarity_boost: 0.75, style: 0.6, speed: 1.12 }
-            : flavor === "breathless"
-              ? { stability: 0.35, similarity_boost: 0.75, style: 0.45, speed: 1.05 }
-              : { stability: 0.5, similarity_boost: 0.75, style: 0.15, speed: 0.95 },
+          voice_settings: elevenLabsSettings[flavor],
         }),
       });
     }
