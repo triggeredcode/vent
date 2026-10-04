@@ -11,16 +11,17 @@ The UI is a single mobile-shaped client experience so the call, generated journa
 ### Client
 
 - `src/components/vent-app.tsx` owns navigation and the end-to-end demo flow.
-- Browser speech recognition captures English or Hinglish speech when available.
+- Web Audio captures mono PCM, detects a completed voice turn, and encodes a 16 kHz WAV.
 - Browser speech synthesis plays short listener responses.
 - Journal entries persist in `localStorage` under `vent-journal`.
 - `src/lib/journal.ts` contains deterministic extraction and grounded retrieval fallbacks.
 
 ### Server
 
-- `POST /api/listener` accepts `{ message, mode }`.
-- When `OLLAMA_BASE_URL` is configured, the route asks Gemma for one constrained listener action and a response under 12 words.
-- Without Ollama, it uses an explicit local fallback so a demo never fails because of provider setup.
+- `GET /api/voice/status` verifies that Ollama and both required models are available before the UI claims to listen.
+- `POST /api/voice/turn` accepts a WAV turn, uses `gemma4:e2b` for transcription, then asks `gemma3:4b` for one constrained listener action and a short response.
+- `POST /api/listener` remains as the text-only listener adapter.
+- Ollama defaults to `http://127.0.0.1:11434`; the call surfaces a quiet actionable error rather than silently switching to demo behavior.
 - Serious self-harm language bypasses passive listening and receives a direct safety-oriented response.
 
 ## Listener contract
@@ -36,6 +37,8 @@ reflect_briefly
 ```
 
 VENT does not default to advice. Responses stay short enough to feel like a person listening on a call.
+
+The same action drives the mascot’s gesture. Acknowledgments nod, questions tilt with curiosity, and brief reflections use a slower reassuring motion. This keeps animation deterministic without introducing a second model.
 
 ## Data boundary
 

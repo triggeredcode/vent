@@ -6,16 +6,17 @@ The core loop is intentionally small:
 
 > Call → talk naturally → end the call → see your day → ask your life
 
-Open-weight AI is central to the listener: the included adapter runs Gemma through a local Ollama endpoint, keeping intimate conversations under the user’s control. A deterministic fallback keeps the demo functional when Ollama is unavailable.
+Open-weight AI is central to the listener: Gemma transcribes and responds through local Ollama, keeping intimate conversations on the user’s machine.
 
 ## What works
 
-- A polished mobile-first home and call experience
+- A polished, iOS-inspired call experience with connecting, ringing, and pickup states
+- An animated 3D listener whose motion follows the model’s response action
 - Vent mode that does not save the conversation
 - Journal mode that creates and saves a structured day locally
-- Browser speech recognition with a typed demo fallback
+- Real microphone PCM capture and local Gemma audio transcription
 - Short, restrained voice responses through browser speech synthesis
-- Gemma listener adapter through Ollama
+- Ollama health checks that prevent false “Listening” states
 - Mood calendar and detailed daily journal
 - Grounded search over saved entries with source dates
 - Local browser persistence and a PWA manifest
@@ -33,10 +34,11 @@ pnpm dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-The app works without environment variables. To use a local open-weight model:
+The local voice call defaults to Ollama at `http://127.0.0.1:11434`. Install both models:
 
 ```bash
 ollama pull gemma3:4b
+ollama pull gemma4:e2b
 ollama serve
 ```
 
@@ -45,6 +47,7 @@ Then set:
 ```dotenv
 OLLAMA_BASE_URL=http://127.0.0.1:11434
 OLLAMA_MODEL=gemma3:4b
+OLLAMA_AUDIO_MODEL=gemma4:e2b
 ```
 
 ## Validate
@@ -59,12 +62,12 @@ The build script uses webpack because it is more reliable in restricted CI and a
 ## Architecture
 
 ```text
-microphone / typed demo line
+microphone
         ↓
-browser speech recognition
+browser PCM capture → 16 kHz WAV
         ↓
-/api/listener → Gemma via Ollama → restrained action + short response
-        ↓                         ↘ deterministic offline fallback
+/api/voice/turn → Gemma 4 audio transcription → Gemma 3 listener action
+        ↓
 browser speech synthesis
 
 journal call → structured entry → local browser storage
