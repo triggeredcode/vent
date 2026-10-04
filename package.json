@@ -11,7 +11,8 @@
     "seed": "node scripts/seed.mjs",
     "connect": "node scripts/setup.mjs",
     "vent": "node scripts/start.mjs",
-    "worker": "tsx scripts/worker.ts"
+    "worker": "tsx scripts/worker.ts",
+    "voice:record": "./voice/record.sh"
   },
   "dependencies": {
     "@sentry/nextjs": "^11.4.0",

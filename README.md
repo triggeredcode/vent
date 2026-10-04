@@ -27,7 +27,7 @@ Every piece of intelligence in VENT is an open-weight model running on your own 
 | Write the journal page (JSON schema) | Gemma 4 E4B | Ollama, local |
 | Answer memory questions | Gemma 4 E4B | Ollama, local |
 | Embeddings for memory search | nomic-embed-text | Ollama, local |
-| VENT's voice | Chatterbox-Turbo (your cloned voice, MIT), Kokoro-82M fallback | `./voice`, local |
+| VENT's voice | Kokoro-82M by default; Chatterbox-Turbo (MIT) clones *your* voice once you record one | `./voice`, local |
 
 Measured warm on an M4 Pro: ~150–400 ms to transcribe a turn, ~400–550 ms to reply, then speech synthesis. The first reply is pre-warmed while the phone rings.
 
@@ -43,6 +43,18 @@ pnpm vent
 `pnpm vent` does the rest: it starts Ollama and pulls the Gemma models on first run, starts VENT's local voice, starts the app, loads a few sample days into an empty journal and opens http://localhost:3000.
 
 Use Chrome or Safari (the microphone needs `localhost`). Laptop speakers are fine: VENT never listens while it talks. Tap the character to interrupt it.
+
+### Give VENT your own voice (optional, ~1 minute)
+
+Out of the box VENT speaks with Kokoro's `af_heart`, a natural local voice. To make it sound like you (or a friend who agrees to it):
+
+```bash
+pnpm voice:record
+```
+
+It shows a short script (`voice/SCRIPT.md`), counts down, records 45 seconds and cleans the take: it trims silence, removes rumble and normalises loudness. Then it restarts the voice server, which clones the voice locally with Chatterbox-Turbo (about 0.5 s per line on Apple Silicon). The recording stays in `voice/voices/`, which is gitignored. Delete that folder to go back to the default voice.
+
+Tips for a clean result: use a quiet room, sit a hand's width from the mic, and talk calmly, the way you would to a friend.
 
 ### Partners in one command
 

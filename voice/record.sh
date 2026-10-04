@@ -15,4 +15,5 @@ ffmpeg -hide_banner -loglevel error -y -i voices/raw-take.wav \
   -af "highpass=f=70,silenceremove=start_periods=1:start_threshold=-45dB,areverse,silenceremove=start_periods=1:start_threshold=-45dB,areverse,loudnorm=I=-18:TP=-2" \
   -ar 24000 -ac 1 voices/owner-script.wav
 echo "Saved voice/voices/owner-script.wav ($(ffprobe -v error -show_entries format=duration -of csv=p=0 voices/owner-script.wav)s)."
-echo "Restart the voice server to use it: ./voice/start.sh --bg"
+echo "Switching VENT to your voice (the first time downloads the cloning model, ~1.2 GB)…"
+./start.sh --bg
