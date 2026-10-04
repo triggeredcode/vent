@@ -1,8 +1,8 @@
 """VENT local TTS server: Kokoro-82M on Apple Silicon via mlx-audio,
-plus an optional zero-shot cloned voice ("owner") via Chatterbox-Turbo (mlx-audio).
+plus an opt-in (VENT_TTS_CLONE=1) zero-shot cloned voice ("owner") via Chatterbox-Turbo (mlx-audio).
 
 OpenAI-compatible:  POST /v1/audio/speech  {model, voice, input, response_format, speed, stream?, style?}
-                    style: "calm" (default) | "fired" | "breathless"  (see styles.py)
+                    style: "calm" (default) | "fired" | "breathless" | "bright"  (see styles.py)
 Health:             GET  /health
 """
 
@@ -38,7 +38,9 @@ KOKORO_DEFAULT = "af_heart"
 SAMPLE_RATE = 24000
 
 # Cloned voice: Chatterbox-Turbo (MIT) zero-shot, conditioned once at startup on a reference clip.
+# OFF by default (product owner's request): only loaded when VENT_TTS_CLONE=1 (true/yes/on also work).
 CLONE_VOICE = "owner"
+CLONE_ENABLED = os.environ.get("VENT_TTS_CLONE", "").strip().lower() in ("1", "true", "yes", "on")
 # 8-bit: ~30% faster than fp16 on an M4 Pro (580 vs 800 ms for an 8-word line), no audible/ASR difference.
 CLONE_MODEL_REPO = os.environ.get("VENT_TTS_CLONE_MODEL", "mlx-community/chatterbox-turbo-8bit")
 # 0.5 instead of the model's 0.8: fewer babble/hallucination tails on very short inputs ("Hmm.").
@@ -46,8 +48,8 @@ CLONE_TEMPERATURE = float(os.environ.get("VENT_TTS_CLONE_TEMPERATURE", "0.5"))
 VOICES_DIR = Path(__file__).resolve().parent / "voices"
 # First existing file wins: the scripted recording beats the cleaned call clip.
 CLONE_REFS = [VOICES_DIR / "owner-script.wav", VOICES_DIR / "owner.wav"]
-# "default"/"vent-calm" -> owner when the clone is loaded (it met the <=1.3 s warm target for an
-# ~8-word line on an M4 Pro), else af_heart. VENT_TTS_DEFAULT_VOICE (or legacy VENT_TTS_VOICE) overrides.
+# "default"/"vent-calm"/"calm" -> af_heart. VENT_TTS_DEFAULT_VOICE (or legacy VENT_TTS_VOICE) overrides
+# (e.g. "owner", which only takes effect when the clone is enabled).
 DEFAULT_VOICE_ENV = os.environ.get("VENT_TTS_DEFAULT_VOICE") or os.environ.get("VENT_TTS_VOICE")
 DEFAULT_VOICE = KOKORO_DEFAULT  # resolved at startup
 
@@ -181,12 +183,16 @@ class SpeechRequest(BaseModel):
     response_format: str | None = "wav"
     speed: float | None = 1.0
     stream: bool | None = False
-    style: str | None = "calm"  # "calm" | "fired" | "breathless"; anything else -> calm
+    style: str | None = "calm"  # "calm" | "fired" | "breathless" | "bright"; anything else -> calm
 
 
 def _load_clone(load_model) -> None:
     """Load Chatterbox-Turbo and cache speaker conditioning, only if a reference clip exists."""
     global _clone, _clone_ref, _clone_error
+    if not CLONE_ENABLED:
+        _clone_error = "disabled (set VENT_TTS_CLONE=1 to enable)"
+        print(f"[vent-tts] clone voice '{CLONE_VOICE}' {_clone_error}", flush=True)
+        return
     ref = next((p for p in CLONE_REFS if p.is_file()), None)
     if ref is None:
         _clone_error = "no reference clip in voice/voices/"
@@ -207,7 +213,7 @@ def _load_clone(load_model) -> None:
 
 
 def _resolve_default() -> str:
-    want = (DEFAULT_VOICE_ENV or (CLONE_VOICE if _clone is not None else KOKORO_DEFAULT)).strip().lower()
+    want = (DEFAULT_VOICE_ENV or KOKORO_DEFAULT).strip().lower()
     if want == CLONE_VOICE and _clone is None:
         print(f"[vent-tts] default voice '{want}' unavailable; using {KOKORO_DEFAULT}", flush=True)
         return KOKORO_DEFAULT
@@ -230,7 +236,7 @@ def _startup() -> None:
     except Exception as e:  # noqa: BLE001
         print(f"[vent-tts] Hindi warmup failed (non-fatal): {e}")
     _load_clone(load_model)
-    for st in ("fired", "breathless"):  # warm the style paths (scipy imports, first-call overhead)
+    for st in ("fired", "breathless", "bright"):  # warm the style paths (scipy imports, first-call overhead)
         synth("Okay, keep going.", KOKORO_DEFAULT, 1.0, st)
     DEFAULT_VOICE = _resolve_default()
     for k in ("default", "vent-calm", "calm"):
@@ -245,7 +251,7 @@ def health():
     return {"ready": _ready, "model": MODEL_REPO, "engine": "kokoro-82m (mlx-audio)",
             "voice": DEFAULT_VOICE, "sample_rate": SAMPLE_RATE, "warmup_ms": _warm_ms,
             "styles": list(styles.STYLES),
-            "clone": {"voice": CLONE_VOICE, "loaded": _clone is not None, "model": CLONE_MODEL_REPO,
+            "clone": {"voice": CLONE_VOICE, "enabled": CLONE_ENABLED, "loaded": _clone is not None, "model": CLONE_MODEL_REPO,
                       "reference": _clone_ref, "error": _clone_error}}
 
 

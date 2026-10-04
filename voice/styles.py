@@ -3,6 +3,7 @@
   calm        Breathe mode. Untouched: exactly the pre-style behaviour.
   fired       Punch / devil mode. Racing, clipped, pushed: a friend who's furious on your behalf.
   breathless  Sweat mode. Out of breath mid-workout: short phrases with audible breaths between them.
+  bright      Journal call. A bit enthusiastic, curious about you: warmer and livelier than calm, not frantic.
 
 Each style has two halves:
   * text / model side (`prepare_text`, `kokoro_speed`): cheap nudges given to the TTS model itself.
@@ -22,7 +23,7 @@ import numpy as np
 from scipy.signal import butter, lfilter, resample_poly, sosfilt
 
 SR = 24000
-STYLES = ("calm", "fired", "breathless")
+STYLES = ("calm", "fired", "breathless", "bright")
 
 
 def normalize_style(style: str | None) -> str:
@@ -81,7 +82,7 @@ def prepare_text(text: str, style: str, clone: bool) -> str:
 
 def kokoro_speed(speed: float, style: str) -> float:
     """Kokoro has a native speed control; use it instead of time-stretching (better quality, zero cost)."""
-    mult = {"calm": 1.0, "fired": 1.13, "breathless": 1.05}[style]
+    mult = {"calm": 1.0, "fired": 1.13, "breathless": 1.05, "bright": 1.07}[style]
     return min(max(speed * mult, 0.5), 2.0)
 
 
@@ -218,7 +219,7 @@ def _trim_edges(x: np.ndarray, keep_ms: float = 40.0) -> np.ndarray:
 
 
 # ------------------------------------------------------------------------------------------------- fired
-def _fired(x: np.ndarray, tempo: float) -> np.ndarray:
+def _fired(x: np.ndarray, tempo: float, clone: bool) -> np.ndarray:
     ref = _active_rms(x)
     # 1. Clipped: shorten internal pauses (>110 ms -> ~60-45% of their length, min 70 ms).
     parts, prev = [], 0
@@ -236,11 +237,16 @@ def _fired(x: np.ndarray, tempo: float) -> np.ndarray:
     y = wsola(y, tempo / (p_up / p_down))
     # 3. Urgency: tighten lows, push presence (2-4 kHz), a little edge at 5 kHz.
     y = sosfilt(butter(2, 110, "highpass", fs=SR, output="sos"), y).astype(np.float32)
-    y = _peaking(y, 3000, 4.5, 0.9)
-    y = _peaking(y, 5200, 1.5, 1.2)
+    #    Kokoro voices are already bright (spectral centroid ~4 kHz vs ~1.3 kHz for the clone), so they get
+    #    a gentler presence push and no 5 kHz edge, which would turn harsh/sibilant.
+    y = _peaking(y, 3000, 4.5 if clone else 2.5, 0.9)
+    if clone:
+        y = _peaking(y, 5200, 1.5, 1.2)
+    else:
+        y = sosfilt(butter(2, 9000, "lowpass", fs=SR, output="sos"), y).astype(np.float32)
     # 4. Pushed: compression (more consistent, "leaning in") + light tanh saturation.
     y = _compress(y, thresh_db=-26, ratio=3.0)
-    y = _saturate(y, 1.6)
+    y = _saturate(y, 1.6 if clone else 1.3)
     return _finish(y, ref, gain=1.25)
 
 
@@ -252,7 +258,7 @@ def _pink(n: int, rng: np.random.Generator) -> np.ndarray:
     return np.fft.irfft(spec, len(w))[:n].astype(np.float32)
 
 
-def _breath(dur_s: float, kind: str, rng: np.random.Generator) -> np.ndarray:
+def _breath(dur_s: float, kind: str, rng: np.random.Generator, soft: bool = False) -> np.ndarray:
     """Synthesised breath: pink noise through a breathy 'h' vocal-tract shape + an effortful envelope.
 
     inhale: brighter (turbulence at the lips/teeth), rises then cuts off as the next phrase starts.
@@ -261,7 +267,7 @@ def _breath(dur_s: float, kind: str, rng: np.random.Generator) -> np.ndarray:
     n = max(int(dur_s * SR), 1)
     noise = _pink(n, rng)
     if kind == "inhale":
-        bands = [(500, 1100, 0.6), (1300, 2600, 1.0), (2800, 5200, 0.55)]
+        bands = [(500, 1100, 0.6), (1300, 2600, 1.0), (2800, 5200, 0.25 if soft else 0.55)]
     else:
         bands = [(300, 900, 1.0), (1000, 2000, 0.7), (2300, 4000, 0.3)]
     y = np.zeros(n, np.float32)
@@ -279,42 +285,71 @@ def _breath(dur_s: float, kind: str, rng: np.random.Generator) -> np.ndarray:
     return (y / r).astype(np.float32)
 
 
-def _breathless(x: np.ndarray, tempo: float, salt: str) -> np.ndarray:
+def _breathless(x: np.ndarray, tempo: float, salt: str, clone: bool) -> np.ndarray:
     rng = _seed(x, salt)
     x = _trim_edges(x)
     ref = _active_rms(x)
     if tempo != 1.0:
         x = wsola(x, tempo)
-    br = 0.28 * ref  # breath loudness relative to speech (about -11 dB)
+    # Breath loudness relative to speech: about -11 dB on the clone, about -14 dB on Kokoro (its clean, bright
+    # timbre makes noise stand out more). `soft` breaths also drop most of the >2.8 kHz hiss band.
+    br = (0.28 if clone else 0.20) * ref
+    soft = not clone
+    k = 0.8 if soft else 1.0  # Kokoro: shorter breaths too, so the line isn't swamped
+    breath = lambda d, kind: _breath(d * k, kind, rng, soft)  # noqa: E731
 
     # Breathy voice: a bit of aspiration noise riding the speech envelope (high band only, so vowels stay clear).
     env = _envelope(x, 15.0)
     asp = sosfilt(butter(2, [1800, 6500], "bandpass", fs=SR, output="sos"), _pink(len(x), rng)).astype(np.float32)
     asp *= env / ((float(np.sqrt(np.mean(asp ** 2))) or 1.0))
-    x = x + 0.10 * asp
+    x = x + (0.10 if clone else 0.04) * asp
 
     # Effort: slow amplitude tremor (~4 Hz, +/-8%).
     t = np.arange(len(x), dtype=np.float32) / SR
     x = x * (1 + 0.08 * np.sin(2 * np.pi * rng.uniform(3.6, 4.6) * t + rng.uniform(0, 6.28)))
 
     # Short breathy phrases: every internal pause becomes a gasp-for-air; pauses are stretched if a breath needs room.
-    out = [_breath(rng.uniform(0.20, 0.26), "inhale", rng) * br * 0.9, np.zeros(int(0.03 * SR), np.float32)]
+    out = [breath(rng.uniform(0.20, 0.26), "inhale") * br * 0.9, np.zeros(int(0.03 * SR), np.float32)]
     prev = 0
     for s, e in _silences(x, 90):  # >=90 ms: real pauses, not plosive closures
         out.append(x[prev:s])
         gap = (e - s) / SR
         if gap >= 0.22:  # sentence-ish break: tired exhale, then a deeper inhale
-            ex = _breath(rng.uniform(0.16, 0.22), "exhale", rng) * br * 0.8
-            inh = _breath(rng.uniform(0.26, 0.34), "inhale", rng) * br
-            out += [ex, np.zeros(int(0.03 * SR), np.float32), inh, np.zeros(int(0.03 * SR), np.float32)]
+            inh = breath(rng.uniform(0.26, 0.34), "inhale") * br
+            if not soft:  # clone: tired exhale first; Kokoro: just the inhale (subtler)
+                out += [breath(rng.uniform(0.16, 0.22), "exhale") * br * 0.8, np.zeros(int(0.03 * SR), np.float32)]
+            out += [inh, np.zeros(int(0.03 * SR), np.float32)]
         else:  # comma-ish break: quick catch-breath
-            inh = _breath(rng.uniform(0.17, 0.23), "inhale", rng) * br * 0.85
+            inh = breath(rng.uniform(0.17, 0.23), "inhale") * br * 0.85
             out += [np.zeros(int(0.02 * SR), np.float32), inh, np.zeros(int(0.025 * SR), np.float32)]
         prev = e
     out.append(x[prev:])
-    out.append(_breath(rng.uniform(0.22, 0.3), "exhale", rng) * br * 0.75)  # trailing 'hhh'
+    out.append(breath(rng.uniform(0.22, 0.3), "exhale") * br * 0.75)  # trailing 'hhh'
     y = np.concatenate(out).astype(np.float32)
     return _finish(y, ref, gain=1.0)
+
+
+# ------------------------------------------------------------------------------------------------ bright
+def _bright(x: np.ndarray, tempo: float) -> np.ndarray:
+    """Journal call: a bit enthusiastic, curious about you. Warmer and livelier than calm, never frantic."""
+    ref = _active_rms(x)
+    # Lift: +0.40 semitone (resample 43/44); the tempo the resample adds is undone/adjusted by WSOLA.
+    p_up, p_down = 44, 43
+    y = resample_poly(x, p_down, p_up).astype(np.float32)
+    y = wsola(y, tempo / (p_up / p_down))
+    # Warm + present, gently: +1.5 dB body at 220 Hz, +2 dB at 2.8 kHz and +1.5 dB air at 6 kHz (all wide).
+    y = sosfilt(butter(2, 80, "highpass", fs=SR, output="sos"), y).astype(np.float32)
+    y = _peaking(y, 220, 1.5, 0.8)
+    y = _peaking(y, 2800, 2.0, 0.7)
+    y = _peaking(y, 6000, 1.5, 0.7)  # a little air
+    # Livelier: mild upward expansion of the level contour (stressed syllables pop a little more), the
+    # opposite of fired's compression. gain ~ (env / median)^0.2, clamped to +/-3 dB.
+    env = _envelope(y, 25.0)
+    active = env > 0.1 * (env.max() + 1e-9)
+    med = float(np.median(env[active])) if active.any() else 1.0
+    g = np.clip((np.maximum(env, 1e-6) / med) ** 0.2, 10 ** (-3 / 20), 10 ** (3 / 20))
+    y = y * g.astype(np.float32)
+    return _finish(y, ref, gain=1.12)
 
 
 # --------------------------------------------------------------------------------------------- entry point
@@ -325,9 +360,11 @@ def apply(audio: np.ndarray, style: str, clone: bool, salt: str = "") -> np.ndar
     a = np.asarray(audio, dtype=np.float32)
     if style == "fired":
         # Kokoro already ran at 1.13x natively; Chatterbox has no speed control, so stretch it here.
-        return _fired(a, tempo=1.14 if clone else 1.0)
+        return _fired(a, tempo=1.14 if clone else 1.0, clone=clone)
     if style == "breathless":
-        return _breathless(a, tempo=1.05 if clone else 1.0, salt=salt)
+        return _breathless(a, tempo=1.05 if clone else 1.0, salt=salt, clone=clone)
+    if style == "bright":
+        return _bright(a, tempo=1.07 if clone else 1.0)
     return a
 
 

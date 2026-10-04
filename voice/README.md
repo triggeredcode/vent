@@ -6,7 +6,9 @@ Homebrew `espeak-ng` covers words misaki doesn't know and Hindi.
 
 It also has one **cloned voice, `owner`**: zero-shot voice cloning with **Chatterbox-Turbo** (Resemble AI, **MIT** licence),
 running on MLX through mlx-audio (`mlx-community/chatterbox-turbo-8bit`, plus `mlx-community/S3TokenizerV2` for conditioning).
-The voice is the product owner's own, used with his explicit permission. When the reference clip exists, this is the default voice.
+The voice is the product owner's own, used with his explicit permission. **It's off by default** (the owner asked for it to be removed):
+the server only loads it when started with `VENT_TTS_CLONE=1`, e.g. `VENT_TTS_CLONE=1 ./voice/start.sh --bg`. The reference audio in
+`voice/voices/` is kept, but it isn't read unless the clone is enabled.
 
 Why this engine: on an M4 Pro, MLX was about 3.5x faster than `kokoro-onnx` on CPU (148 ms vs 524 ms for the
 same sentence). misaki's English pronunciation is also better than plain espeak.
@@ -21,8 +23,8 @@ curl -s http://127.0.0.1:8880/health
 
 `start.sh` installs espeak-ng with brew if it's missing, runs `uv sync` (`.venv`), sets `HF_HOME=voice/.cache/huggingface`, and
 starts the server on `127.0.0.1:8880`. At startup it loads the model and warms it up, so the first request is fast.
-The very first run downloads the models: about 330 MB for Kokoro, plus about 1.2 GB for Chatterbox-Turbo 8-bit and the S3 tokenizer
-(the latter only when a reference clip exists). Startup takes about 10 s with the cloned voice.
+The very first run downloads about 330 MB for Kokoro. With `VENT_TTS_CLONE=1` it also downloads about 1.2 GB for Chatterbox-Turbo 8-bit and the S3 tokenizer.
+Warmup takes about 3.5 s by default, or about 6 s (10 s or more in total) with the clone.
 
 ## API (OpenAI-compatible)
 
@@ -32,7 +34,7 @@ The very first run downloads the models: about 330 MB for Kokoro, plus about 1.2
 {"model": "kokoro", "voice": "default", "input": "Hey, I'm here.", "response_format": "wav", "speed": 1, "stream": false, "style": "calm"}
 ```
 
-- `style` (optional): `calm` (the default), `fired` or `breathless`. Anything else, or leaving it out, means `calm`, which is
+- `style` (optional): `calm` (the default), `fired`, `breathless` or `bright`. Anything else, or leaving it out, means `calm`, which is
   exactly the old behaviour. Works for every voice, with or without `stream`. See [Styles](#styles-call-modes).
 - `response_format`: `wav` (the default and fastest, 24 kHz mono PCM16), `mp3` (encoded with ffmpeg), or `pcm` (raw s16le at 24 kHz).
 - `stream: true`: sends a WAV header and then PCM chunks, one sentence at a time, using chunked transfer. Playback can start
@@ -42,18 +44,18 @@ The very first run downloads the models: about 330 MB for Kokoro, plus about 1.2
 
 ## Voices
 
-- The default is **`owner`** (the cloned voice) when it's loaded. Otherwise it's **`af_heart`**, Kokoro's top-rated voice, which is warm, calm
-  and conversational. Set `VENT_TTS_DEFAULT_VOICE` (e.g. `af_heart` or `owner`) to override this either way. The old `VENT_TTS_VOICE` also still works.
-  If the override asks for `owner` but the clone isn't loaded, the server falls back to `af_heart`.
+- The default is **`af_heart`**, Kokoro's top-rated voice: warm, calm and conversational. Set `VENT_TTS_DEFAULT_VOICE` to override it.
+  The old `VENT_TTS_VOICE` also still works. Setting it to `owner` only takes effect together with `VENT_TTS_CLONE=1`.
+- `owner` only works when the clone is enabled. Otherwise it falls back to `af_heart`.
 - `default`, `vent-calm`, `calm`, and any name the server doesn't recognise all map to the default voice.
-- `GET /health` reports the clone's state under `clone` (`loaded`, `model`, `reference`, `error`).
+- `GET /health` reports the clone's state under `clone` (`enabled`, `loaded`, `model`, `reference`, `error`).
 - Any Kokoro voice id works, for example `af_bella`, `af_nicole`, `bf_emma`, `am_michael` or `bm_george`.
 - The language comes from the first letter of the voice id.
 - Hindi: `hf_alpha`, `hf_beta`, `hm_omega`, `hm_psi`. The aliases `hindi` and `hindi-male` also work.
 - For Hinglish written in Latin script, `af_heart` sounds more natural. The Hindi voices read through Hindi espeak G2P.
 - OpenAI names are aliased too: `alloy`, `nova`, `shimmer`, `echo`, `onyx`, `fable`.
 
-## Cloned voice (`owner`)
+## Cloned voice (`owner`, opt-in: `VENT_TTS_CLONE=1`)
 
 - **Reference clip.** At startup the server uses the first of these files that exists: `voice/voices/owner-script.wav` (a scripted recording),
   then `voice/voices/owner.wav` (a cleaned 16 s clip). Use a clip longer than 5 s; only the first 10 to 15 s are used. The speaker
@@ -89,13 +91,16 @@ With fp16 the same lines took about 785, 545 and 690 ms. A Kokoro voice takes ab
 
 ## Styles (call modes)
 
-VENT's three call modes each get their own delivery. The code is in `voice/styles.py`, and `server.py` calls it from `synth()`.
+Each VENT call mode gets its own delivery. The code is in `voice/styles.py`, and `server.py` calls it from `synth()`.
 
 | `style` | App mode | How it should sound |
 |---|---|---|
 | `calm` | Breathe | Unchanged. This is the pre-style output, bit for bit. |
 | `fired` | Punch / devil | Racing, clipped and pushed, like a friend who's furious on your behalf. |
 | `breathless` | Sweat | Out of breath mid-workout: short phrases with audible breaths between them. |
+| `bright` | Journal | A bit enthusiastic, curious about you. Warmer and livelier than calm, but not frantic. |
+
+Since the clone was switched off, the styles have been re-tuned on **af_heart** (the default). Where Kokoro and the clone differ, both settings are listed below.
 
 **What the model can do (checked first).** mlx-audio's `ChatterboxTurboTTS.generate()` accepts `exaggeration` and `cfg_weight`, but
 Turbo ignores both and logs a warning. It has no speed control either. The tokenizer does have paralinguistic tags (`[angry]`, `[gasp]`,
@@ -109,9 +114,11 @@ native `speed`, which is used instead of time-stretching.
 - Kokoro: `speed` × 1.13 (native).
 - Chatterbox: pauses longer than 110 ms are cut to about 45% of their length (at least 70 ms), so the delivery is clipped. Then a pitch-up of about +0.7 semitone
   (resample by 24/25) and a **WSOLA** time-stretch bring the total tempo to about 1.14×. The pitch doesn't chipmunk: WSOLA keeps the pitch, and only the 0.7 st comes from the resample.
-- Both engines (Kokoro also gets the +0.7 st, and its tempo is kept): 110 Hz high-pass, presence peak of +4.5 dB at 3 kHz plus +1.5 dB at 5.2 kHz,
-  3:1 compression above −26 dB, light tanh saturation (drive 1.6), and loudness about +2 dB over calm. Peaks stay under 0.92.
-- Measured on the sample line: about 3.6 words/s against 2.9 for calm, audio 3.0 s against 3.4–3.8 s, and RMS 0.061 against 0.043.
+- Both engines: the same pause trimming. Kokoro also gets the +0.7 st, with its tempo kept. Then a 110 Hz high-pass, 3:1 compression above −26 dB, tanh saturation,
+  and loudness about +2 dB over calm. Peaks stay under 0.92.
+- The EQ differs by engine. The clone gets a presence peak of +4.5 dB at 3 kHz plus +1.5 dB at 5.2 kHz, with drive 1.6. Kokoro is already bright (spectral centroid
+  about 4 kHz against about 1.3 kHz for the clone), so it gets only +2.5 dB at 3 kHz, a 9 kHz low-pass and drive 1.3. That keeps it from turning harsh or sibilant.
+- Measured on af_heart: 3.36 words/s against 2.99 for calm, 3.5 s of audio against 3.9 s, and RMS 0.062 against 0.047. Energy above 8 kHz falls from 3.4% to 1.8% (less hiss).
 
 **`breathless`**
 - Text: inside long runs without punctuation (more than 5 words), a comma goes before clause words ("and", "because", "when", …) but never after
@@ -121,30 +128,47 @@ native `speed`, which is used instead of time-stretching.
 - DSP (both engines): every internal pause of 90 ms or more (shorter gaps are plosive closures and are left alone) becomes a synthesised breath. A short pause gets a quick catch-breath inhale
   (0.17–0.23 s). A longer one (0.22 s or more, i.e. a sentence break) gets an exhale and then a deeper inhale. Each line also starts with an inhale and ends with a trailing "hhh" exhale.
   Breaths are pink noise through breathy 'h' formant bands. Inhales are brighter, with a rising envelope that cuts off when the speech starts. Exhales are darker,
-  with a quick onset and a long tail. Both have a little 9–13 Hz flutter. They sit about 11 dB below the speech.
-- It also adds a slight breathy voice (aspiration noise in the 1.8–6.5 kHz band that follows the speech envelope, at 0.1×) and a 3.6–4.6 Hz amplitude
+  with a quick onset and a long tail. Both have a little 9–13 Hz flutter.
+- Kokoro gets a **subtler** setting, because its clean, bright timbre makes noise stand out:
+  - breaths are about 14 dB below the speech (the clone's are about 11 dB below) and 20% shorter;
+  - the hiss band above 2.8 kHz in the inhale drops to 0.25× (0.55× on the clone);
+  - a sentence break gets just an inhale, with no exhale before it;
+  - the aspiration noise is 0.04× (0.1× on the clone).
+  On the sample line af_heart breathless runs 4.7 s against 3.9 s calm.
+- Both engines also get a slight breathy voice (aspiration noise in the 1.8–6.5 kHz band that follows the speech envelope) and a 3.6–4.6 Hz amplitude
   tremor of ±8% for effort.
 - Breaths are seeded from the text, so the same line always gets the same breaths. Calm and fired are deterministic apart from the
   clone's own sampling.
 
+**`bright`**
+- Kokoro: `speed` × 1.07 (native). Clone: a WSOLA stretch to 1.07×.
+- Pitch lift of +0.40 semitone (resample 43/44, with the extra tempo compensated by WSOLA).
+- Gentle, wide EQ: a 80 Hz high-pass, +1.5 dB of warmth at 220 Hz, +2 dB of presence at 2.8 kHz and +1.5 dB of air at 6 kHz.
+- Livelier dynamics: a mild *upward* expansion of the level contour (gain ∝ (envelope/median)^0.2, clamped to ±3 dB), so stressed syllables pop a little.
+  This is the opposite of fired's compression. Loudness is about +1 dB over calm.
+- No pause trimming and no saturation, so it stays natural. Measured on af_heart: 3.50 words/s against 3.33 for calm on "Hey! How was today? Tell me everything.",
+  and pitch 202 Hz against 195 Hz on the sample line.
+
 **Streaming.** The style is applied per sentence, so with `breathless` each streamed sentence starts with an inhale and ends with an exhale.
 
-**Samples** (gitignored): `voice/voices/style-calm.wav`, `style-fired.wav` and `style-breathless.wav`, all with the `owner` voice saying
-"Wait, he said that to you? Seriously? Okay, keep going." Whisper large-v3-turbo (MLX) transcribed every take correctly, ignoring punctuation and "Ok"/"Okay":
-4/4 takes for fired and 4/4 for breathless. Calm got 3/4, and its one miss was only the "Ok"/"Okay" spelling. No clipped samples. Peaks are 0.22–0.31.
+**Samples** (gitignored, all **af_heart**): `voice/voices/style-calm.wav`, `style-fired.wav` and `style-breathless.wav` say
+"Wait, he said that to you? Seriously? Okay, keep going." `style-bright.wav` says "Hey! How was today? Tell me everything."
+Whisper large-v3-turbo (MLX) got every word right in all four, plus bright on the "Wait…" line and calm on the "Hey!…" line. It only missed punctuation;
+breathless came back as "Wait, he said that to you. Seriously. Okay, keep going." No clipped samples. Peaks are 0.37–0.61.
+(The earlier clone versions of these samples were overwritten.)
 
-### Style latency (M4 Pro, warm, full HTTP round trip, WAV, median of 5)
+### Style latency (M4 Pro, warm, full HTTP round trip, WAV)
 
-| Voice | Line | calm | fired | breathless |
+af_heart (default), "Wait, he blamed you? For the release delay?" (8 words), median of 7:
+
+| no style | calm | fired | breathless | bright |
 |---|---|---|---|---|
-| owner | "Wait, he blamed you? For the release delay?" (8 words) | 578 ms (2.7 s audio) | **615 ms** (2.2 s) | **617 ms** (3.2 s) |
-| owner | "Hey, what's up?" | 403 ms | 428 ms | 402 ms |
-| owner | the 11-word sample line | 799 ms | 798 ms | 756 ms |
-| af_heart | 8 words | 120 ms | 121 ms | 209 ms (per-phrase calls) |
-| af_heart | 11 words | 151 ms | 155 ms | 351 ms |
+| 115 ms (3.0 s audio) | 114 ms (3.0 s) | 117 ms (2.7 s) | 204 ms (3.1 s, per-phrase calls) | 117 ms (2.9 s) |
 
-DSP costs about 10–25 ms per sentence. Streaming with two sentences: owner gets first audio after about 480–530 ms in every style, and af_heart after 85 ms (calm and fired) or 140 ms (breathless).
-With no `style` the timings are the same as with `calm`.
+Streaming two sentences on af_heart: first audio after about 80 ms (calm, fired, bright) or 134 ms (breathless). DSP costs about 10–25 ms per sentence.
+
+The clone (`VENT_TTS_CLONE=1`), measured before bright existed, median of 5: 578 ms for calm, 615 ms for fired and 617 ms for breathless on the 8-word line.
+First streamed audio came after about 480–530 ms. Expect bright to come in at about calm + 30 ms.
 
 ## Latency (M4 Pro, warm, full HTTP round trip, WAV)
 
@@ -163,8 +187,9 @@ With no `style` the timings are the same as with `calm`.
   quick, so this is fine for a single call.
 - The first time a voice is used, its voice file has to load (up to about 2 s if it needs downloading). The default voice and `hf_alpha`
   are loaded during warmup.
+- `bright`/`fired` on the clone haven't been listened to or re-checked since the switch to af_heart. Their clone settings are the ones described above.
 - Styles are DSP, not a different recording. `fired` is a faster, brighter, compressed take of the same voice: it doesn't
   add anger the model didn't produce. `breathless` breaths are synthetic noise, so they're plausible but not the owner's real breathing. If they sound
-  too loud or too hissy, change `br = 0.28 * ref` in `styles._breathless`.
-- `[gasp]`/`[sigh]` tags from upstream text pass straight through to the clone. They're tokenized and not spoken, but they add pauses (and latency).
+  too loud or too hissy, change `br = (0.28 if clone else 0.20) * ref` in `styles._breathless`.
+- `[gasp]`/`[sigh]` tags from upstream text pass straight through to the clone (Kokoro would read them out). They're tokenized and not spoken, but they add pauses (and latency).
 - Both engines share the one generation lock, so a long cloned line will delay a Kokoro request that comes in at the same time.
