@@ -11,7 +11,11 @@ Every piece of intelligence in VENT is an open-weight model running on your own 
 - **Vent** — a real phone call. VENT reacts like a friend would ("Wait, he blamed *you*?"), nudges you on, stays quiet when you're mid-thought, and never gives advice. When you hang up, nothing is kept unless you ask.
 - **Journal** — tell VENT about your day. When the call ends, Gemma writes a magazine-style page: mood arc, people, food, places, highlights, hard moments, things to remember, and the day retold in your own voice.
 - **Memories** — ask "When did I last mention Rahul?" or "What did I eat last Sunday?" and get an answer grounded only in your pages, with the days it came from.
-- **Let it out your way** — on a vent call pick 🥊 Punch, 🏋️ Sweat or 🌈 Breathe. The mascot boxes, does pull-ups or breathes along, and the poster recolours itself as Gemma reads the mood of what you're saying (fired up, heavy, tense, bright, calm).
+- **Let it out your way** — pick a mode on the Talk it out card, each its own world with its own character:
+  - **Breathe** (default): Puff, a cloud spirit, breathes with you on a pastel aurora.
+  - **Punch** (devil mode): a furious little devil boxer whose punches land when *your voice* gets loud — hit counter, combos, comic POWs.
+  - **Sweat**: Bolt does pull-ups faster the more you talk, with a rep counter and sets.
+  Gemma reads the mood of each line (fired up, heavy, tense, bright, calm) and the scene's colours follow.
 - **Let it go** — hang up on a vent and the call is crumpled like a page and tossed away. Nothing is kept.
 - Edit or delete any page, or forget its recording and keep the page.
 
