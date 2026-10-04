@@ -13,8 +13,7 @@ import type { CallMode, JournalEntry, Screen } from "@/lib/types";
 
 function TopBar({ onHome }: { onHome: () => void }) {
   return <header className="topbar">
-    <button className="brand" onClick={onHome} aria-label="Haan home"><BrandMark /><span className="wordmark">haan<i>.</i></span></button>
-    <span className="topbar-note">your listening friend</span>
+    <button className="brand" onClick={onHome} aria-label="VENT home"><BrandMark /><span className="wordmark">VENT</span></button>
   </header>;
 }
 
@@ -71,7 +70,7 @@ export function VentApp() {
   const selected = entries.find((entry) => entry.id === selectedId);
   const fullBleed = screen === "call" || screen === "after-call";
 
-  let content: React.ReactNode = <HomeScreen entries={entries} startCall={startCall} openEntry={openEntry} openJournal={() => navigate("journal")} />;
+  let content: React.ReactNode = <HomeScreen entries={entries} startCall={startCall} openEntry={openEntry} />;
   if (screen === "journal") content = <JournalScreen entries={entries} loaded={loaded} openEntry={openEntry} startCall={startCall} />;
   if (screen === "memory") content = <MemoryScreen entries={entries} openEntry={openEntry} />;
   if (screen === "day" && selected) content = <DayScreen key={selected.id} entry={selected} back={() => navigate("journal")} onChange={refresh} onDeleted={() => { void refresh(); navigate("journal"); }} />;

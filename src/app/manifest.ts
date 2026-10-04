@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Haan — a friend who listens",
-    short_name: "Haan",
+    name: "VENT — a friend who listens",
+    short_name: "VENT",
     description: "A private voice-first journal that listens before it speaks.",
     start_url: "/",
     display: "standalone",

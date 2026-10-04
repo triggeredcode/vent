@@ -4,7 +4,8 @@ import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "./icon";
 import { bytesToBase64, encodeMonoWav } from "@/lib/wav";
-import type { CallMode, CallTurn, ListenerAction } from "@/lib/types";
+import { CallScene, sceneOptions, type VentScene } from "./call-scene";
+import type { CallMode, CallTurn, ListenerAction, ListenerTone } from "@/lib/types";
 
 export interface CallResult {
   mode: CallMode;
@@ -15,8 +16,8 @@ export interface CallResult {
 type Phase = "connecting" | "ringing" | "listening" | "hearing" | "thinking" | "speaking" | "error";
 
 const greetings: Record<CallMode, string[]> = {
-  vent: ["Hey, you. What's going on?", "Hi! Kya hua, bolo.", "Hey. I've got time — what's up?", "Hi there. Talk to me."],
-  journal: ["Hey! So, how was today?", "Hi! Tell me about your day.", "Hey you. How did today go?", "Hi! Kaisa raha aaj ka din?"],
+  vent: ["Hey, you. What's going on?", "Hey. I've got time — what's up?", "Hi there. Talk to me.", "Hey! Okay, what happened?"],
+  journal: ["Hey! So, how was today?", "Hi! Tell me about your day.", "Hey you. How did today go?", "Hey! Walk me through your day."],
 };
 
 const statusCopy: Record<Phase, string> = {
@@ -34,8 +35,8 @@ const START_FRAMES = 2;
 const END_SILENCE_FRAMES = 11; // ~470 ms of quiet ends a turn
 const MIN_TURN_SECONDS = 0.45;
 const MAX_TURN_SECONDS = 25;
-// Speakers bleed into the mic, so Haan never listens to itself: the mic is deaf while
-// Haan speaks and for a short echo tail afterwards. Tap the mascot to cut Haan off.
+// Speakers bleed into the mic, so VENT never listens to itself: the mic is deaf while
+// VENT speaks and for a short echo tail afterwards. Tap the mascot to cut VENT off.
 const ECHO_TAIL_MS = 450;
 
 function formatTime(total: number) {
@@ -70,6 +71,15 @@ export function CallScreen({ mode, onEnd }: { mode: CallMode; onEnd: (result: Ca
   const [speakerOn, setSpeakerOn] = useState(true);
   const [gesture, setGesture] = useState<ListenerAction | "rest">("rest");
   const [attempt, setAttempt] = useState(0);
+  const [tone, setTone] = useState<ListenerTone | null>(null);
+  const [scene, setScene] = useState<VentScene>(() => {
+    try { return (window.localStorage.getItem("vent-scene") as VentScene) || "punch"; } catch { return "punch"; }
+  });
+  const pickScene = (next: VentScene) => {
+    setScene(next);
+    setTone(null);
+    try { window.localStorage.setItem("vent-scene", next); } catch { /* private mode */ }
+  };
 
   const turnsRef = useRef<CallTurn[]>([]);
   const queueRef = useRef<string[]>([]);
@@ -84,7 +94,7 @@ export function CallScreen({ mode, onEnd }: { mode: CallMode; onEnd: (result: Ca
   const deafUntilRef = useRef(0);
   const audioContextRef = useRef<AudioContext | null>(null);
 
-  /** Drives the mascot from Haan's own voice: louder syllables, bigger bounce. */
+  /** Drives the mascot from VENT's own voice: louder syllables, bigger bounce. */
   const followVoice = useCallback((audio: HTMLAudioElement) => {
     const context = audioContextRef.current;
     const orb = levelRef.current;
@@ -178,10 +188,12 @@ export function CallScreen({ mode, onEnd }: { mode: CallMode; onEnd: (result: Ca
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ audio, format: "wav", mode, history: turnsRef.current.slice(-16) }),
       });
-      const data = await response.json() as { transcript?: string; text?: string; action?: ListenerAction; error?: string };
+      const data = await response.json() as { transcript?: string; text?: string; action?: ListenerAction; tone?: ListenerTone; error?: string };
       if (!response.ok) throw new Error(data.error ?? "Voice turn failed");
       failuresRef.current = 0;
       if (data.transcript) {
+        // The listener reads the emotional weather of each line; the poster's colours follow it.
+        if (data.tone) setTone(data.tone);
         turnsRef.current.push({ speaker: "you", text: data.transcript });
         // If they started talking again while we were thinking, a reply would interrupt them — stay quiet.
         const interrupted = speechCountRef.current !== speechMark || queueRef.current.length > 0;
@@ -298,7 +310,7 @@ export function CallScreen({ mode, onEnd }: { mode: CallMode; onEnd: (result: Ca
       } catch (problem) {
         if (disposed) return;
         setPhase("error");
-        setError(problem instanceof DOMException && problem.name === "NotAllowedError" ? "Haan needs your microphone to hear you." : "Haan couldn't connect. Is Ollama running?");
+        setError(problem instanceof DOMException && problem.name === "NotAllowedError" ? "VENT needs your microphone to hear you." : "VENT couldn't connect. Is Ollama running?");
       }
     };
 
@@ -319,20 +331,26 @@ export function CallScreen({ mode, onEnd }: { mode: CallMode; onEnd: (result: Ca
   const live = phase !== "connecting" && phase !== "ringing" && phase !== "error";
   const status = muted && live ? "muted" : live ? formatTime(seconds) : statusCopy[phase];
 
-  return <main className={`call-screen call-${mode} phase-${phase}`}>
+  return <main className={`call-screen call-${mode} phase-${phase} ${mode === "vent" ? `scene-${scene}` : ""}`} data-tone={tone ?? undefined}>
     <div className="poster-art" aria-hidden="true"><span className="shape-sun" /><span className="shape-moon" /><span className="shape-ring" /><span className="shape-leaf" /><span className="shape-dot" /></div>
 
     <header className="call-identity">
       <span className="call-kicker">{mode === "vent" ? "TALK IT OUT" : "TODAY'S PAGE"}</span>
-      <h1>Haan</h1>
+      <h1>Vent</h1>
       <div className="call-state" aria-live="polite">{phase === "error" ? error : status}</div>
+      {mode === "vent" && <div className="scene-picker" role="radiogroup" aria-label="How do you want to let it out?">
+        {sceneOptions.map((option) => <button key={option.id} role="radio" aria-checked={scene === option.id} className={scene === option.id ? "selected" : ""} onClick={() => pickScene(option.id)}>
+          <span aria-hidden="true">{option.emoji}</span>{option.label}
+        </button>)}
+      </div>}
     </header>
 
     <div className="call-body">
-      <div className={`listener-orb ${muted ? "muted" : ""} ${phase} gesture-${gesture}`} ref={levelRef} onClick={() => stopPlaybackRef.current()} role="button" tabIndex={-1} aria-label="Tap to interrupt Haan">
+      {mode === "vent" && <CallScene scene={scene} />}
+      <div className={`listener-orb ${muted ? "muted" : ""} ${phase} gesture-${gesture}`} ref={levelRef} onClick={() => stopPlaybackRef.current()} role="button" tabIndex={-1} aria-label="Tap to interrupt VENT">
         <span className="voice-ring" /><span className="voice-ring" />
         <span className="speak-wave" /><span className="speak-wave" /><span className="speak-wave" />
-        <Image src="/vent-listener.png" alt="Haan, listening" width={300} height={300} priority />
+        <Image src="/vent-listener.png" alt="VENT, listening" width={300} height={300} priority />
       </div>
       {phase === "error" && <button className="retry-call" onClick={() => setAttempt((value) => value + 1)}>Call again</button>}
     </div>

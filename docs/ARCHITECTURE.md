@@ -2,7 +2,7 @@
 
 ## Product flow
 
-Haan is organised around one story: **call → talk → see your day → ask your life**.
+VENT is organised around one story: **call → talk → see your day → ask your life**.
 
 The UI is one phone-shaped client (`src/components/vent-app.tsx`) so the call, the page it produces, and later memory answers feel continuous. Every screen lives inside the same fixed-size shell; only the content area scrolls.
 
@@ -20,9 +20,9 @@ microphone ─► Web Audio VAD (adaptive noise floor, ~470 ms end-of-turn)
 
 Turn-taking rules live in `src/components/call-screen.tsx`:
 
-- **Hold back:** if the caller starts talking again while Haan is thinking, the pending reply is dropped and the new audio is processed with the full history.
-- **Never hears itself:** speakers bleed into laptop mics, so the mic is deaf while Haan speaks and for a 450 ms echo tail; the server also drops short "turns" that only repeat Haan's last line. Tap the mascot to cut Haan off.
-- **Speaks with its body:** the mascot bounces to the loudness of Haan's own voice (Web Audio analyser), with ripples while it talks.
+- **Hold back:** if the caller starts talking again while VENT is thinking, the pending reply is dropped and the new audio is processed with the full history.
+- **Never hears itself:** speakers bleed into laptop mics, so the mic is deaf while VENT speaks and for a 450 ms echo tail; the server also drops short "turns" that only repeat VENT's last line. Tap the mascot to cut VENT off.
+- **Speaks with its body:** the mascot bounces to the loudness of VENT's own voice (Web Audio analyser), with ripples while it talks.
 - **Silence is an answer:** the listener may choose `silence` when a line is cut off mid-thought.
 - **Warm pickup:** while the phone "rings", both models are loaded and the listener's system prompt is pre-filled, so the first reply is as fast as the rest.
 
@@ -32,9 +32,9 @@ Turn-taking rules live in `src/components/call-screen.tsx`:
 silence | acknowledge | follow_up | clarify | reflect_briefly
 ```
 
-The prompt (`src/lib/prompts.ts`) asks for short, specific, spoken reactions in the caller's language (English or Hinglish), never advice or therapy talk. Replies that smell like advice are regenerated once. The chosen action drives the mascot's gesture (nod, tilt, reassure, quiet nod).
+The prompt (`src/lib/prompts.ts`) asks for short, specific, spoken English reactions, never advice or therapy talk, plus a `tone` (fired_up, heavy, tense, bright, calm) that recolours the call poster. Replies that smell like advice are regenerated once. The chosen action drives the mascot's gesture (nod, tilt, reassure, quiet nod).
 
-Crisis language bypasses the model entirely and returns a direct safety response with Indian helplines.
+Crisis language bypasses the model entirely and returns a direct safety response pointing to local emergency services and findahelpline.com.
 
 ## After the call
 
