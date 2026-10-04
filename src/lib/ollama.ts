@@ -1,6 +1,6 @@
 import { crisisPattern, crisisResponse, extractionPrompt, listenerSystemPrompt, memoryPrompt, transcriptionPrompt } from "./prompts";
 import { recordUsage, traced } from "./telemetry";
-import type { CallMode, CallTurn, ListenerAction, ListenerTone } from "./types";
+import type { CallFlavor, CallMode, CallTurn, ListenerAction, ListenerTone } from "./types";
 
 const baseUrl = () => (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/$/, "");
 /** Fast ears: transcribes each spoken turn. */
@@ -68,14 +68,14 @@ async function warm(model: string) {
 }
 
 /** Loads the listener and pre-fills its system prompt so the first reply is as fast as the rest. */
-async function primeListener(mode: CallMode) {
+async function primeListener(mode: CallMode, flavor: CallFlavor) {
   await fetch(`${baseUrl()}/api/chat`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     signal: AbortSignal.timeout(60_000),
     body: JSON.stringify({
       model: listenerModel(),
-      messages: [{ role: "system", content: listenerSystemPrompt(mode) }, { role: "user", content: "hi" }],
+      messages: [{ role: "system", content: listenerSystemPrompt(mode, flavor) }, { role: "user", content: "hi" }],
       stream: false,
       think: false,
       keep_alive: "30m",
@@ -84,7 +84,7 @@ async function primeListener(mode: CallMode) {
   });
 }
 
-export async function getModelStatus(mode?: CallMode) {
+export async function getModelStatus(mode?: CallMode, flavor: CallFlavor = "calm") {
   try {
     const response = await fetch(`${baseUrl()}/api/tags`, { cache: "no-store", signal: AbortSignal.timeout(4_000) });
     if (!response.ok) throw new Error("Ollama did not respond");
@@ -96,7 +96,7 @@ export async function getModelStatus(mode?: CallMode) {
     const live = [...new Set([voiceModel(), listenerModel()])];
     // Both call models must be in memory before VENT "picks up"; the journal model can load later.
     await Promise.all(live.filter((model) => !missing.includes(model)).map((model) =>
-      (model === listenerModel() && mode ? primeListener(mode) : warm(model)).catch(() => undefined)));
+      (model === listenerModel() && mode ? primeListener(mode, flavor) : warm(model)).catch(() => undefined)));
     if (!missing.includes(journalModel()) && !live.includes(journalModel())) void warm(journalModel()).catch(() => undefined);
     return { ready: live.every((model) => !missing.includes(model)), missing };
   } catch {
@@ -140,12 +140,12 @@ const adviceSmell = /\b(you should|you could try|have you tried|try to|make sure
 
 const tones: ListenerTone[] = ["fired_up", "heavy", "tense", "bright", "calm"];
 
-export async function listen(history: CallTurn[], mode: CallMode): Promise<{ action: ListenerAction; tone: ListenerTone; text: string }> {
+export async function listen(history: CallTurn[], mode: CallMode, flavor: CallFlavor = "calm"): Promise<{ action: ListenerAction; tone: ListenerTone; text: string }> {
   const latest = history.at(-1)?.text ?? "";
   if (crisisPattern.test(latest)) return { action: "reflect_briefly", tone: "heavy", text: crisisResponse };
 
   const messages: ChatMessage[] = [
-    { role: "system", content: listenerSystemPrompt(mode) },
+    { role: "system", content: listenerSystemPrompt(mode, flavor) },
     ...history.slice(-16).map((turn): ChatMessage => turn.speaker === "you"
       ? { role: "user", content: turn.text }
       : { role: "assistant", content: JSON.stringify({ action: turn.action ?? (turn.text ? "acknowledge" : "silence"), text: turn.text }) }),

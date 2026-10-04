@@ -28,9 +28,26 @@ export function AfterCall({ call, onDone, onWritten }: { call: CallResult; onDon
     }
   }, [call, onWritten]);
 
+  // A page of the call that dissolves, left to right, into drifting specks.
+  const [specks] = useState(() => Array.from({ length: 84 }, (_, index) => {
+    const column = index % 12;
+    const row = Math.floor(index / 12);
+    const palette = ["#f0c947", "#e99377", "#98bfd1", "#a8c8a0", "#c7b3dc", "#e8dfcb"];
+    return {
+      left: `${4 + column * 8 + Math.random() * 4}%`,
+      top: `${6 + row * 13 + Math.random() * 6}%`,
+      background: palette[Math.floor(Math.random() * palette.length)],
+      "--dx": `${30 + Math.random() * 110}px`,
+      "--dy": `${-(90 + Math.random() * 220)}px`,
+      "--spin": `${Math.random() * 360 - 180}deg`,
+      "--size": `${4 + Math.random() * 7}px`,
+      animationDelay: `${150 + column * 125 + Math.random() * 90}ms`,
+    } as React.CSSProperties;
+  }));
+
   const letGo = () => {
     setState("tossing");
-    window.setTimeout(onDone, 2300);
+    window.setTimeout(onDone, 2900);
   };
 
   useEffect(() => {
@@ -41,14 +58,10 @@ export function AfterCall({ call, onDone, onWritten }: { call: CallResult; onDon
     <div className="poster-art" aria-hidden="true"><span className="shape-sun" /><span className="shape-moon" /><span className="shape-ring" /><span className="shape-leaf" /><span className="shape-dot" /></div>
     <div className="after-top"><span>CALL ENDED</span><span>{duration(call.seconds)}</span></div>
 
-    {state === "tossing" && <section className="toss" aria-live="polite">
-      <div className="toss-stage" aria-hidden="true">
-        <span className="toss-flight"><span className="toss-paper"><i /><i /><i /><i /></span></span>
-        <svg className="toss-bin" viewBox="0 0 90 100">
-          <path className="bin-lid" d="M8 18h74M34 18v-7h22v7" stroke="currentColor" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-          <path d="M16 30h58l-6 62H22z" fill="currentColor" />
-          <path d="M34 42v38M45 42v38M56 42v38" stroke="var(--paper)" strokeWidth="4" strokeLinecap="round" opacity=".5" />
-        </svg>
+    {state === "tossing" && <section className="release" aria-live="polite">
+      <div className="release-stage" aria-hidden="true">
+        <div className="release-page"><i /><i /><i /><i /><i /></div>
+        {specks.map((speck, index) => <span key={index} className="speck" style={speck} />)}
       </div>
       <h1>Let <em>go.</em></h1>
       <p>Nothing from this call was kept.</p>

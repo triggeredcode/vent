@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "./icon";
 import { bytesToBase64, encodeMonoWav } from "@/lib/wav";
 import { scenes, type SceneProps, type VentScene } from "./scenes";
-import type { CallMode, CallTurn, ListenerAction, ListenerTone } from "@/lib/types";
+import type { CallFlavor, CallMode, CallTurn, ListenerAction, ListenerTone } from "@/lib/types";
 
 export interface CallResult {
   mode: CallMode;
@@ -61,6 +61,8 @@ function playRing(context: AudioContext, at: number) {
   });
 }
 
+const sceneFlavor: Record<VentScene, CallFlavor> = { breathe: "calm", punch: "fired", sweat: "breathless" };
+
 const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
 export function CallScreen({ mode, scene, onEnd }: { mode: CallMode; scene: VentScene; onEnd: (result: CallResult) => void }) {
@@ -72,6 +74,7 @@ export function CallScreen({ mode, scene, onEnd }: { mode: CallMode; scene: Vent
   const [gesture, setGesture] = useState<ListenerAction | "rest">("rest");
   const [attempt, setAttempt] = useState(0);
   const [tone, setTone] = useState<ListenerTone | null>(null);
+  const flavor = mode === "vent" ? sceneFlavor[scene] : "calm";
   const levelListenersRef = useRef(new Set<(level: number) => void>());
   const subscribeLevel = useCallback((listener: (level: number) => void) => {
     levelListenersRef.current.add(listener);
@@ -135,7 +138,7 @@ export function CallScreen({ mode, scene, onEnd }: { mode: CallMode; scene: Vent
     speakingRef.current = true;
     setPhase("speaking");
     try {
-      const response = await fetch("/api/voice/speak", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }) });
+      const response = await fetch("/api/voice/speak", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text, flavor }) });
       if (!response.ok) throw new Error("voice unavailable");
       const url = URL.createObjectURL(await response.blob());
       await new Promise<void>((resolve) => {
@@ -168,7 +171,7 @@ export function CallScreen({ mode, scene, onEnd }: { mode: CallMode; scene: Vent
       setGesture("rest");
       settle();
     }
-  }, [followVoice, settle]);
+  }, [flavor, followVoice, settle]);
 
   const processNextRef = useRef<() => Promise<void>>(async () => undefined);
   const processNext = useCallback(async () => {
@@ -183,7 +186,7 @@ export function CallScreen({ mode, scene, onEnd }: { mode: CallMode; scene: Vent
       const response = await fetch("/api/voice/turn", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ audio, format: "wav", mode, history: turnsRef.current.slice(-16) }),
+        body: JSON.stringify({ audio, format: "wav", mode, flavor, history: turnsRef.current.slice(-16) }),
       });
       const data = await response.json() as { transcript?: string; text?: string; action?: ListenerAction; tone?: ListenerTone; error?: string };
       if (!response.ok) throw new Error(data.error ?? "Voice turn failed");
@@ -210,7 +213,7 @@ export function CallScreen({ mode, scene, onEnd }: { mode: CallMode; scene: Vent
     if (reply) await speak(reply.text, reply.action);
     settle();
     if (queueRef.current.length) void processNextRef.current();
-  }, [mode, settle, speak]);
+  }, [flavor, mode, settle, speak]);
   useEffect(() => { processNextRef.current = processNext; }, [processNext]);
 
   useEffect(() => {
@@ -245,7 +248,7 @@ export function CallScreen({ mode, scene, onEnd }: { mode: CallMode; scene: Vent
         context = new AudioContext();
         audioContextRef.current = context;
         await context.resume();
-        const [health] = await Promise.all([fetch(`/api/voice/status?mode=${mode}`, { cache: "no-store" }), wait(700)]);
+        const [health] = await Promise.all([fetch(`/api/voice/status?mode=${mode}&flavor=${flavor}`, { cache: "no-store" }), wait(700)]);
         if (!health.ok) throw new Error("models");
         if (disposed) return;
         setPhase("ringing");
@@ -326,7 +329,7 @@ export function CallScreen({ mode, scene, onEnd }: { mode: CallMode; scene: Vent
       void context?.close();
       stream?.getTracks().forEach((track) => track.stop());
     };
-  }, [attempt, mode, processNext, settle, speak]);
+  }, [attempt, flavor, mode, processNext, settle, speak]);
 
   const live = phase !== "connecting" && phase !== "ringing" && phase !== "error";
   const status = muted && live ? "muted" : live ? formatTime(seconds) : statusCopy[phase];

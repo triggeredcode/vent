@@ -1,15 +1,15 @@
 import { NextResponse } from "next/server";
-import { synthesize, voiceProvider } from "@/lib/voice";
+import { asFlavor, synthesize, voiceProvider } from "@/lib/voice";
 
 export const maxDuration = 30;
 
 export async function POST(request: Request) {
-  const body = await request.json() as { text?: string };
+  const body = await request.json() as { text?: string; flavor?: string };
   const text = body.text?.trim();
   if (!text) return NextResponse.json({ error: "Text is required." }, { status: 400 });
 
   try {
-    const response = await synthesize(text);
+    const response = await synthesize(text, asFlavor(body.flavor));
     if (!response.ok || !response.body) throw new Error(`Voice service failed (${response.status})`);
     return new Response(response.body, {
       headers: {

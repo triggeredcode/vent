@@ -1,4 +1,7 @@
 import { traced } from "./telemetry";
+import type { CallFlavor } from "./types";
+
+export const asFlavor = (value: unknown): CallFlavor => value === "fired" || value === "breathless" ? value : "calm";
 
 export type VoiceProvider = "local" | "elevenlabs";
 
@@ -20,9 +23,9 @@ export async function voiceStatus() {
 }
 
 /** Returns a streaming audio response from the configured voice. */
-export async function synthesize(text: string): Promise<Response> {
+export async function synthesize(text: string, flavor: CallFlavor = "calm"): Promise<Response> {
   const provider = voiceProvider();
-  return traced("speak", "gen_ai.speech", { "vent.voice_provider": provider, "vent.characters": text.length }, async () => {
+  return traced("speak", "gen_ai.speech", { "vent.voice_provider": provider, "vent.voice_style": flavor, "vent.characters": text.length }, async () => {
     if (provider === "elevenlabs") {
       const voiceId = process.env.ELEVENLABS_VOICE_ID ?? "21m00Tcm4TlvDq8ikWAM";
       return fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream?output_format=mp3_44100_128&optimize_streaming_latency=3`, {
@@ -32,7 +35,11 @@ export async function synthesize(text: string): Promise<Response> {
         body: JSON.stringify({
           text,
           model_id: process.env.ELEVENLABS_MODEL ?? "eleven_flash_v2_5",
-          voice_settings: { stability: 0.5, similarity_boost: 0.75, style: 0.15, speed: 0.95 },
+          voice_settings: flavor === "fired"
+            ? { stability: 0.3, similarity_boost: 0.75, style: 0.6, speed: 1.12 }
+            : flavor === "breathless"
+              ? { stability: 0.35, similarity_boost: 0.75, style: 0.45, speed: 1.05 }
+              : { stability: 0.5, similarity_boost: 0.75, style: 0.15, speed: 0.95 },
         }),
       });
     }
@@ -46,6 +53,7 @@ export async function synthesize(text: string): Promise<Response> {
         input: text,
         response_format: "wav",
         speed: Number(process.env.VENT_TTS_SPEED ?? 1),
+        style: flavor,
       }),
     });
   });
