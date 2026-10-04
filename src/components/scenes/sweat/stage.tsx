@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { CallPhase, SceneProps } from "../types";
 import { Figure } from "./figure";
 import { frame, hang, HANG_CY, mix, stand, TOP_CY, type Pose } from "./rig";
+import { createSfx } from "./sfx";
 import styles from "../sweat.module.css";
 
 type Mode = "warm" | "pull" | "rest" | "flex" | "pause" | "slump";
@@ -68,7 +69,10 @@ export function SweatStage({ phase, tone, muted, subscribeLevel }: SceneProps) {
       const key = el.getAttribute("data-k")!;
       parts.set(key, [...(parts.get(key) ?? []), el]);
     });
-    const dropEls = [...root.querySelectorAll<SVGPathElement>("[data-drop]")];
+    const dropEls = [...root.querySelectorAll<SVGGElement>("[data-drop]")];
+    const sfx = createSfx();
+    /** Sounds only while the caller has the floor: never while VENT talks, while ringing, or muted. */
+    const audible = () => modeRef.current === "pull" && (phaseRef.current === "hearing" || phaseRef.current === "listening");
     const segments = [...(ringRef.current?.querySelectorAll("[data-seg]") ?? [])];
     const host = root.parentElement;
 
@@ -100,6 +104,10 @@ export function SweatStage({ phase, tone, muted, subscribeLevel }: SceneProps) {
       reps += 1;
       if (repsRef.current) repsRef.current.textContent = String(reps).padStart(3, "0");
       const inSet = reps % SET;
+      if (audible()) {
+        sfx.rep(power);
+        if (inSet === 0) sfx.setDone();
+      }
       segments.forEach((seg, index) => seg.toggleAttribute("data-on", inSet === 0 ? true : index < inSet));
       pop(plusRef.current, [
         { opacity: 0, transform: "translate(-4px, 10px) scale(.4) rotate(-14deg)" },
@@ -214,7 +222,9 @@ export function SweatStage({ phase, tone, muted, subscribeLevel }: SceneProps) {
       const dt = Math.min(0.05, (now - last) / 1000);
       last = now;
       time += dt;
-      level += (levelRef.current - level) * Math.min(1, dt * 7);
+      // Feedback guard: while our own foley may be leaking into the mic, only let the level fall.
+      const heard = sfx.sounding() ? Math.min(levelRef.current, level) : levelRef.current;
+      level += (heard - level) * Math.min(1, dt * 7);
       const rawVoice = host ? parseFloat(host.style.getPropertyValue("--voice")) || 0 : 0;
       voice += (rawVoice - voice) * Math.min(1, dt * 18);
 
@@ -243,7 +253,7 @@ export function SweatStage({ phase, tone, muted, subscribeLevel }: SceneProps) {
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+    return () => { cancelAnimationFrame(raf); sfx.dispose(); };
   }, []);
 
   return <div ref={rootRef} className={styles.stage} data-mode={mode} data-tone={tone ?? undefined} data-muted={muted || undefined}>
