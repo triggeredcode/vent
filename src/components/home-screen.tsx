@@ -25,8 +25,9 @@ export function HomeScreen({ entries, scene, chooseScene, startCall, openEntry }
         </div>
         <span className="cover-shape-a" aria-hidden="true" /><span className="cover-shape-b" aria-hidden="true" />
         <span className="cover-mascot" key={scene}>
-          {scene === "breathe" && <span className="cover-sun" />}
-          <span className="cover-art"><CoverArt /></span>
+          {scene === "breathe"
+            ? <><span className="cover-sun" /><Image src="/vent-listener.png" alt="" width={300} height={300} priority /></>
+            : <span className="cover-art"><CoverArt /></span>}
         </span>
         <span className="cover-call-copy"><small>CALL VENT</small><strong>{option.cover}</strong></span>
         <span className="cover-phone"><Icon name="phone" /></span>
@@ -35,7 +36,6 @@ export function HomeScreen({ entries, scene, chooseScene, startCall, openEntry }
     <section className="editorial-actions">
       <button className="journal-feature" onClick={() => startCall("journal")} aria-label="Call to make today's journal page">
         <span className="feature-lines" aria-hidden="true"><i /><i /><i /></span>
-        <Image className="feature-mascot" src="/vent-listener.png" alt="" width={120} height={120} />
         <span className="feature-copy"><small>CAPTURE TODAY</small><strong>Make a<br />journal page</strong></span>
         <span className="feature-phone"><Icon name="phone" /></span>
       </button>
