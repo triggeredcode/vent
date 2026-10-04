@@ -259,6 +259,59 @@ export function synthClank(v: Voice, t: number): number {
 }
 
 /**
+ * Optional recorded samples (generated into public/sfx/ by the setup script). Any file that is
+ * missing simply falls back to the synthesised sound above.
+ */
+const SAMPLE_FILES = {
+  punch1: "/sfx/punch-1.mp3",
+  punch2: "/sfx/punch-2.mp3",
+  punch3: "/sfx/punch-3.mp3",
+  uppercut: "/sfx/uppercut.mp3",
+  burst: "/sfx/bag-burst.mp3",
+  bell: "/sfx/bell.mp3",
+  chain: "/sfx/chain.mp3",
+  whoosh: "/sfx/whoosh.mp3",
+} as const;
+type SampleName = keyof typeof SAMPLE_FILES;
+
+/**
+ * Peak level (dBFS) each sample is normalised to at full strength, matching the synthesised
+ * versions so a mix of samples and synth sounds stays balanced and modest under VENT's voice.
+ */
+const SAMPLE_PEAK_DB: Record<SampleName, number> = {
+  punch1: -11, punch2: -11, punch3: -11, uppercut: -10, burst: -11, bell: -14, chain: -12, whoosh: -22,
+};
+
+type Sample = { buffer: AudioBuffer; gain: number; start: number; end: number };
+
+/** Measures a decoded sample: its peak (for normalising) and where the audible part begins and ends. */
+function analyse(buffer: AudioBuffer, peakDb: number): Sample | null {
+  let peak = 0;
+  let first = buffer.length;
+  let last = 0;
+  const threshold = 0.004; // ≈ -48 dBFS: below this counts as silence
+  for (let c = 0; c < buffer.numberOfChannels; c++) {
+    const data = buffer.getChannelData(c);
+    for (let i = 0; i < data.length; i++) {
+      const a = Math.abs(data[i]);
+      if (a > peak) peak = a;
+      if (a > threshold) {
+        if (i < first) first = i;
+        if (i > last) last = i;
+      }
+    }
+  }
+  if (peak < threshold || last <= first) return null;
+  const rate = buffer.sampleRate;
+  return {
+    buffer,
+    gain: 10 ** (peakDb / 20) / peak,
+    start: Math.max(0, first / rate - 0.002),
+    end: Math.min(buffer.duration, last / rate + 0.02),
+  };
+}
+
+/**
  * One AudioContext per Stage, created lazily on the first sound (the call was started by a click,
  * so the page already has user activation) and closed when the Stage unmounts.
  */
@@ -266,6 +319,8 @@ export class PunchSfx {
   private ctx: AudioContext | null = null;
   private voice: Voice | null = null;
   private closed = false;
+  private samples = new Map<SampleName, Sample>();
+  private sampleOut: GainNode | null = null;
 
   constructor(private readonly soft = false) {}
 
@@ -278,6 +333,11 @@ export class PunchSfx {
         const ctx = new Ctor({ latencyHint: "interactive" });
         this.ctx = ctx;
         this.voice = { ctx, out: buildChain(ctx, LEVEL * (this.soft ? SOFT : 1)), noise: makeNoise(ctx) };
+        // Samples are peak-normalised already, so they skip the synth's master/limiter chain.
+        this.sampleOut = ctx.createGain();
+        this.sampleOut.gain.value = this.soft ? SOFT : 1;
+        this.sampleOut.connect(ctx.destination);
+        this.loadSamples(ctx);
       } catch {
         this.closed = true;
         return null;
@@ -286,6 +346,36 @@ export class PunchSfx {
     if (this.ctx.state === "suspended") this.ctx.resume().catch(() => {});
     // Never queue sounds into a context that isn't running: they would all fire at once on resume.
     return this.ctx.state === "running" ? this.voice : null;
+  }
+
+  /** Fetches and decodes every sample once; missing or undecodable files are silently skipped. */
+  private loadSamples(ctx: AudioContext) {
+    (Object.keys(SAMPLE_FILES) as SampleName[]).forEach(async (name) => {
+      try {
+        const response = await fetch(SAMPLE_FILES[name]);
+        if (!response.ok) return;
+        const buffer = await ctx.decodeAudioData(await response.arrayBuffer());
+        const sample = analyse(buffer, SAMPLE_PEAK_DB[name]);
+        if (sample && !this.closed && this.ctx === ctx) this.samples.set(name, sample);
+      } catch {
+        // No sample: the synthesised sound is used instead.
+      }
+    });
+  }
+
+  /** Plays a loaded sample at context time `t`; returns its length in seconds, or 0 if it isn't available. */
+  private play(name: SampleName, t: number, level = 1): number {
+    const sample = this.samples.get(name);
+    if (!sample || !this.ctx || !this.sampleOut) return 0;
+    const src = this.ctx.createBufferSource();
+    src.buffer = sample.buffer;
+    src.playbackRate.value = 0.95 + Math.random() * 0.1;
+    const g = this.ctx.createGain();
+    g.gain.value = sample.gain * level;
+    src.connect(g).connect(this.sampleOut);
+    const length = sample.end - sample.start;
+    src.start(t, sample.start, length);
+    return length / src.playbackRate.value;
   }
 
   /** performance.now() time at which a sound of `seconds`, starting now, has fully left the speakers. */
@@ -299,14 +389,24 @@ export class PunchSfx {
   hit(kind: PunchSound, power: number): number {
     const v = this.ready();
     if (!v) return 0;
-    return this.endsAt(synthHit(v, v.ctx.currentTime + 0.005, kind, power));
+    const t = v.ctx.currentTime + 0.005;
+    const p = Math.max(0, Math.min(1, power));
+    const level = (0.55 + 0.45 * p) * (kind === "upper" ? 1 : kind === "cross" ? 0.86 : 0.74);
+    let length = 0;
+    if (kind === "upper") length = this.play("uppercut", t, level);
+    if (!length) {
+      const loaded = (["punch1", "punch2", "punch3"] as const).filter((name) => this.samples.has(name));
+      if (loaded.length) length = this.play(loaded[Math.floor(Math.random() * loaded.length)], t, level);
+    }
+    return this.endsAt(length || synthHit(v, t, kind, power));
   }
 
   /** A feint through the air. Returns when the sound is over (performance.now() ms), or 0 if nothing played. */
   whoosh(power: number, delay = 0): number {
     const v = this.ready();
     if (!v) return 0;
-    return this.endsAt(delay + synthWhoosh(v, v.ctx.currentTime + 0.005 + delay, power));
+    const t = v.ctx.currentTime + 0.005 + delay;
+    return this.endsAt(delay + (this.play("whoosh", t, 0.6 + 0.4 * power) || synthWhoosh(v, t, power)));
   }
 
   /** A tearing layer, played alongside a hit once the bag is badly damaged. */
@@ -321,8 +421,8 @@ export class PunchSfx {
     const v = this.ready();
     if (!v) return 0;
     const t = v.ctx.currentTime + 0.01;
-    const burst = synthBurst(v, t);
-    const bell = 0.32 + synthBell(v, t + 0.32);
+    const burst = this.play("burst", t) || synthBurst(v, t);
+    const bell = 0.32 + (this.play("bell", t + 0.32) || synthBell(v, t + 0.32));
     return this.endsAt(Math.max(burst, bell));
   }
 
@@ -330,7 +430,8 @@ export class PunchSfx {
   clank(delay = 0): number {
     const v = this.ready();
     if (!v) return 0;
-    return this.endsAt(delay + synthClank(v, v.ctx.currentTime + 0.01 + delay));
+    const t = v.ctx.currentTime + 0.01 + delay;
+    return this.endsAt(delay + (this.play("chain", t) || synthClank(v, t)));
   }
 
   close() {
@@ -338,5 +439,7 @@ export class PunchSfx {
     this.ctx?.close().catch(() => {});
     this.ctx = null;
     this.voice = null;
+    this.sampleOut = null;
+    this.samples.clear();
   }
 }
