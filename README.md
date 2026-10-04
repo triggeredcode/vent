@@ -37,7 +37,7 @@ Open [http://localhost:3000](http://localhost:3000).
 The local voice call defaults to Ollama at `http://127.0.0.1:11434`. Install both models:
 
 ```bash
-ollama pull gemma3:4b
+ollama pull gemma3:1b
 ollama pull gemma4:e2b
 ollama serve
 ```
@@ -46,8 +46,11 @@ Then set:
 
 ```dotenv
 OLLAMA_BASE_URL=http://127.0.0.1:11434
-OLLAMA_MODEL=gemma3:4b
+OLLAMA_MODEL=gemma3:1b
 OLLAMA_AUDIO_MODEL=gemma4:e2b
+VENT_TTS_BASE_URL=http://127.0.0.1:8880
+VENT_TTS_MODEL=openvoice-v2
+VENT_TTS_VOICE=vent-calm
 ```
 
 ## Validate
@@ -77,6 +80,8 @@ journal call → structured entry → local browser storage
                       grounded memory search
 ```
 
+
+See [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) for the measured latency budget, custom voice requirements, local limits, and production path.
 
 ## Product boundaries
 

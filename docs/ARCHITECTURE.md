@@ -19,7 +19,7 @@ The UI is a single mobile-shaped client experience so the call, generated journa
 ### Server
 
 - `GET /api/voice/status` verifies that Ollama and both required models are available before the UI claims to listen.
-- `POST /api/voice/turn` accepts a WAV turn, uses `gemma4:e2b` for transcription, then asks `gemma3:4b` for one constrained listener action and a short response.
+- `POST /api/voice/turn` accepts a WAV turn, uses `gemma4:e2b` for transcription, then asks the low-latency `gemma3:1b` listener for one constrained action and a short response.
 - `POST /api/listener` remains as the text-only listener adapter.
 - Ollama defaults to `http://127.0.0.1:11434`; the call surfaces a quiet actionable error rather than silently switching to demo behavior.
 - Serious self-harm language bypasses passive listening and receives a direct safety-oriented response.
