@@ -5,12 +5,14 @@ export const maxDuration = 120;
 
 export async function POST(request: Request) {
   try {
+    const startedAt = performance.now();
     const body = await request.json() as { audio?: string; format?: "wav" | "mp3"; mode?: "vent" | "journal" };
     if (!body.audio) return NextResponse.json({ error: "Audio is required." }, { status: 400 });
     const transcript = await transcribeAudio(body.audio, body.format ?? "wav");
+    const transcribedAt = performance.now();
     if (!transcript) return NextResponse.json({ transcript: "", action: "silence", text: "" });
     const reply = await listenAndRespond(transcript, body.mode ?? "vent");
-    return NextResponse.json({ transcript, ...reply, source: "ollama" });
+    return NextResponse.json({ transcript, ...reply, source: "ollama", timings: { transcriptionMs: Math.round(transcribedAt - startedAt), responseMs: Math.round(performance.now() - transcribedAt) } });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Voice turn failed";
     return NextResponse.json({ error: message }, { status: 503 });

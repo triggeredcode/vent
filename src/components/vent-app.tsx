@@ -51,19 +51,20 @@ function BottomNav({ screen, go }: { screen: Screen; go: (screen: Screen) => voi
 
 function HomeScreen({ startCall, openEntry }: { startCall: (mode: CallMode) => void; openEntry: (entry: JournalEntry) => void }) {
   return <main className="screen home-screen">
-    <section className="welcome"><span className="eyebrow">SUNDAY, 4 OCTOBER</span><h1>Hey there,</h1><p>What would feel good right now?</p></section>
-    <section className="mode-grid">
-      <button className="mode-card vent-card" onClick={() => startCall("vent")}>
-        <span className="mode-icon"><Icon name="phone" /></span><span><strong>Vent</strong><small>Just talk. I&apos;ll listen.</small></span><Icon className="card-arrow" name="arrow" />
-      </button>
-      <button className="mode-card journal-card" onClick={() => startCall("journal")}>
-        <span className="mode-icon"><Icon name="book" /></span><span><strong>Journal</strong><small>Talk your day through.</small></span><Icon className="card-arrow" name="arrow" />
+    <section className="editorial-cover">
+      <div className="issue-line"><span>TODAY</span><span>SUN · OCTOBER 4</span></div>
+      <h1>How are<br />you, <em>really?</em></h1>
+      <button className="cover-call" onClick={() => startCall("vent")} aria-label="Start a Vent call">
+        <span className="cover-mascot"><span className="cover-sun" /><Image src="/vent-listener.png" alt="" width={250} height={250} priority /></span>
+        <span className="cover-call-copy"><small>CALL VENT</small><strong>Talk it out</strong></span>
+        <span className="cover-phone"><Icon name="phone" /></span>
       </button>
     </section>
-    <div className="privacy-note"><Icon name="shield" /><span>Your conversations stay private. Vent calls aren&apos;t saved unless you choose to.</span></div>
-    <section className="recent-section"><div className="section-heading"><div><span className="eyebrow">YOUR DAYS</span><h2>Recent moments</h2></div><button onClick={() => openEntry(demoEntries[0])}>View journal <Icon name="arrow" /></button></div>
-      <div className="moments-list">{demoEntries.slice(0, 2).map((entry) => <button className="moment" key={entry.id} onClick={() => openEntry(entry)}><span className="mood-dot" style={{ background: entry.mood.color }} /><span className="moment-copy"><strong>{entry.displayDate}</strong><small>{entry.summary}</small></span><Icon name="chevron" /></button>)}</div>
+    <section className="editorial-actions">
+      <button className="journal-feature" onClick={() => startCall("journal")}><span className="feature-number">01</span><span><small>CAPTURE TODAY</small><strong>Make a<br />journal page</strong></span><Icon name="arrow" /></button>
+      <button className="day-feature" onClick={() => openEntry(demoEntries[0])}><span className="day-color" /><span><small>LATEST</small><strong>A focused<br />afternoon</strong></span><span className="day-date">04<br /><i>OCT</i></span></button>
     </section>
+    <div className="privacy-note"><Icon name="shield" /><span>Private by default</span></div>
   </main>;
 }
 
@@ -80,25 +81,45 @@ function CallScreen({ mode, onEnd }: { mode: CallMode; onEnd: (transcript: strin
   const speakerRef = useRef(true);
   const processingRef = useRef(false);
   const speakingRef = useRef(false);
+  const playbackRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => { mutedRef.current = muted; }, [muted]);
   useEffect(() => { speakerRef.current = speakerOn; }, [speakerOn]);
 
-  const speak = useCallback((text: string) => new Promise<void>((resolve) => {
-    if (!speakerRef.current || !("speechSynthesis" in window) || !text) { resolve(); return; }
+  const speak = useCallback(async (text: string) => {
+    if (!speakerRef.current || !text) return;
     speakingRef.current = true;
     setStatus("speaking");
-    setStatusText(text);
-    const utterance = new SpeechSynthesisUtterance(text);
-    const voices = window.speechSynthesis.getVoices();
-    utterance.voice = voices.find((voice) => /siri|samantha|veena|rishi/i.test(voice.name)) ?? voices.find((voice) => voice.lang.startsWith("en-IN")) ?? null;
-    utterance.rate = 0.92;
-    utterance.pitch = 0.96;
-    utterance.onend = () => { speakingRef.current = false; resolve(); };
-    utterance.onerror = () => { speakingRef.current = false; resolve(); };
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
-  }), []);
+    setStatusText("VENT is speaking");
+    try {
+      const response = await fetch("/api/voice/speak", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }) });
+      if (!response.ok) throw new Error("Custom voice unavailable");
+      const url = URL.createObjectURL(await response.blob());
+      await new Promise<void>((resolve) => {
+        const audio = new Audio(url);
+        playbackRef.current = audio;
+        audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
+        audio.onerror = () => { URL.revokeObjectURL(url); resolve(); };
+        void audio.play().catch(() => { URL.revokeObjectURL(url); resolve(); });
+      });
+    } catch {
+      await new Promise<void>((resolve) => {
+        if (!("speechSynthesis" in window)) { resolve(); return; }
+        const utterance = new SpeechSynthesisUtterance(text);
+        const voices = window.speechSynthesis.getVoices();
+        utterance.voice = voices.find((voice) => /siri|samantha|veena|rishi/i.test(voice.name)) ?? voices.find((voice) => voice.lang.startsWith("en-IN")) ?? null;
+        utterance.rate = 0.96;
+        utterance.pitch = 0.96;
+        utterance.onend = () => resolve();
+        utterance.onerror = () => resolve();
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(utterance);
+      });
+    } finally {
+      speakingRef.current = false;
+      playbackRef.current = null;
+    }
+  }, []);
 
   const handleAudio = useCallback(async (audio: string) => {
     if (processingRef.current) return;
@@ -155,7 +176,7 @@ function CallScreen({ mode, onEnd }: { mode: CallMode; onEnd: (transcript: strin
         stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
         if (disposed) { stream.getTracks().forEach((track) => track.stop()); return; }
         source = context.createMediaStreamSource(stream);
-        processor = context.createScriptProcessor(4096, 1, 1);
+        processor = context.createScriptProcessor(2048, 1, 1);
         processor.onaudioprocess = (event) => {
           if (mutedRef.current || processingRef.current || speakingRef.current) return;
           const samples = new Float32Array(event.inputBuffer.getChannelData(0));
@@ -169,7 +190,7 @@ function CallScreen({ mode, onEnd }: { mode: CallMode; onEnd: (transcript: strin
           } else if (recording) {
             chunks.push(samples);
             quietFrames += 1;
-            if (quietFrames >= 10) {
+            if (quietFrames >= 9) {
               const captured = chunks.splice(0);
               recording = false;
               quietFrames = 0;
@@ -194,6 +215,7 @@ function CallScreen({ mode, onEnd }: { mode: CallMode; onEnd: (transcript: strin
       disposed = true;
       window.clearInterval(timer);
       window.speechSynthesis?.cancel();
+      playbackRef.current?.pause();
       processor?.disconnect();
       source?.disconnect();
       void context?.close();
@@ -202,18 +224,26 @@ function CallScreen({ mode, onEnd }: { mode: CallMode; onEnd: (transcript: strin
   }, [attempt, handleAudio]);
 
   return <main className="call-screen">
-    <div className="call-top"><span>{mode === "vent" ? "VENT" : "JOURNAL"}</span><span className="call-secure"><Icon name="shield" /> Local</span></div>
-    <div className="call-body"><div className={`listener-orb ${muted ? "muted" : ""} ${status} gesture-${gesture}`}><div className="mascot-glow" /><Image src="/vent-listener.png" alt="VENT listener mascot" width={300} height={300} priority /><i /><i /></div><div className={`call-state ${status}`}><span />{muted ? "Muted" : statusText}</div><div className="timer">{status === "connecting" || status === "ringing" ? "" : formatTime(seconds)}</div>
+    <div className="call-identity"><h1>{mode === "vent" ? "VENT" : "Journal"}</h1><div className={`call-state ${status}`}><span />{muted ? "Muted" : statusText}</div><div className="timer">{status === "connecting" || status === "ringing" ? "" : formatTime(seconds)}</div></div>
+    <div className="call-body"><div className={`listener-orb ${muted ? "muted" : ""} ${status} gesture-${gesture}`}><div className="mascot-glow" /><Image src="/vent-listener.png" alt="VENT listener mascot" width={300} height={300} priority /><i /><i /></div>
       {status === "error" && <button className="retry-call" onClick={() => setAttempt((value) => value + 1)}>Try again</button>}
     </div>
-    <div className="call-controls"><button onClick={() => setMuted((value) => !value)} className={`call-control ${muted ? "selected" : ""}`}><span><Icon name={muted ? "micOff" : "mic"} /></span>{muted ? "Unmute" : "Mute"}</button><button onClick={() => onEnd(transcript)} className="end-call" aria-label="End call"><Icon name="phone" /></button><button onClick={() => { setSpeakerOn((value) => !value); window.speechSynthesis?.cancel(); }} className={`call-control ${!speakerOn ? "selected" : ""}`}><span><Icon name={speakerOn ? "audio" : "audioOff"} /></span>Audio</button></div>
+    <div className="ios-controls">
+      <button onClick={() => setMuted((value) => !value)} className={`call-control ${muted ? "selected" : ""}`}><span><Icon name={muted ? "micOff" : "mic"} /></span>{muted ? "Unmute" : "Mute"}</button>
+      <button className="call-control" disabled><span><Icon name="keypad" /></span>Keypad</button>
+      <button onClick={() => { setSpeakerOn((value) => !value); window.speechSynthesis?.cancel(); }} className={`call-control ${!speakerOn ? "selected" : ""}`}><span><Icon name={speakerOn ? "audio" : "audioOff"} /></span>Audio</button>
+      <button className="call-control" disabled><span><Icon name="plus" /></span>Add call</button>
+      <button className="call-control" disabled><span><Icon name="video" /></span>FaceTime</button>
+      <button className="call-control" disabled><span><Icon name="person" /></span>Contacts</button>
+    </div>
+    <button onClick={() => onEnd(transcript)} className="end-call" aria-label="End call"><Icon name="phone" /></button>
   </main>;
 }
 
 function JournalScreen({ entries, openEntry }: { entries: JournalEntry[]; openEntry: (entry: JournalEntry) => void }) {
-  return <main className="screen journal-screen"><section className="journal-title"><span className="eyebrow">YOUR JOURNAL</span><h1>Your days, gently held.</h1></section>
-    <section className="calendar-card"><div className="calendar-head"><button aria-label="Previous month">‹</button><h2>October 2026</h2><button aria-label="Next month">›</button></div><div className="weekdays">{["M", "T", "W", "T", "F", "S", "S"].map((day, i) => <span key={`${day}-${i}`}>{day}</span>)}</div><div className="calendar-grid">{calendarDays.map(({ day, currentMonth }, i) => <button key={`${day}-${i}`} className={!currentMonth ? "outside" : day === 4 ? "today" : ""} onClick={() => day === 4 && openEntry(entries[0])}><span>{day}</span>{currentMonth && moodByDay[day] && <i style={{ background: moodByDay[day] }} />}</button>)}</div><div className="calendar-legend"><span><i className="good" />Good</span><span><i className="mixed" />Mixed</span><span><i className="rough" />Rough</span></div></section>
-    <section className="entry-list"><div className="section-heading"><div><span className="eyebrow">LATEST</span><h2>Journal entries</h2></div></div>{entries.map((entry) => <button className="entry-row" key={entry.id} onClick={() => openEntry(entry)}><span className="entry-date"><strong>{entry.date.slice(-2)}</strong><small>{new Date(`${entry.date}T12:00:00`).toLocaleDateString("en", { month: "short" }).toUpperCase()}</small></span><span><strong>{entry.mood.label[0].toUpperCase() + entry.mood.label.slice(1)} day</strong><small>{entry.highlights[0]}</small></span><span className="entry-mood" style={{ background: entry.mood.color }} /></button>)}</section>
+  return <main className="screen journal-screen"><section className="journal-title"><span>2026</span><h1>October</h1><i>JOURNAL / 10</i></section>
+    <section className="calendar-spread"><div className="weekdays">{["M", "T", "W", "T", "F", "S", "S"].map((day, i) => <span key={`${day}-${i}`}>{day}</span>)}</div><div className="calendar-grid">{calendarDays.map(({ day, currentMonth }, i) => <button key={`${day}-${i}`} className={!currentMonth ? "outside" : day === 4 ? "today" : ""} onClick={() => day === 4 && openEntry(entries[0])}><span>{day}</span>{currentMonth && moodByDay[day] && <i style={{ background: moodByDay[day] }} />}</button>)}</div></section>
+    <section className="journal-stories"><div className="stories-head"><span>RECENT PAGES</span><i>{entries.length.toString().padStart(2, "0")}</i></div>{entries.map((entry, index) => <button className={`journal-story story-${index % 3}`} key={entry.id} onClick={() => openEntry(entry)}><span className="story-date"><b>{entry.date.slice(-2)}</b><small>OCT</small></span><span className="story-copy"><small>{entry.mood.label.toUpperCase()}</small><strong>{entry.highlights[0] || "A day worth remembering"}</strong></span><span className="story-arrow"><Icon name="arrow" /></span></button>)}</section>
   </main>;
 }
 
@@ -269,5 +299,6 @@ export function VentApp() {
   if (screen === "memory") content = <MemoryScreen entries={entries} />;
   if (screen === "day") content = <DayScreen entry={selected} back={() => setScreen("journal")} />;
 
-  return <div className={`app-shell ${screen === "call" ? "in-call" : ""}`}>{screen !== "call" && <TopBar onHome={() => setScreen("home")} />}{content}{screen !== "call" && <BottomNav screen={screen} go={setScreen} />}</div>;
+  const navigate = (next: Screen) => { setScreen(next); window.scrollTo({ top: 0, behavior: "smooth" }); };
+  return <div className={`app-shell ${screen === "call" ? "in-call" : ""} ${screen === "home" ? "home-view" : ""}`}>{screen !== "call" && <TopBar onHome={() => navigate("home")} />}{content}{screen !== "call" && <BottomNav screen={screen} go={navigate} />}</div>;
 }

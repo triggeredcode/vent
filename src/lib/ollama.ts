@@ -1,10 +1,19 @@
 export type ListenerAction = "silence" | "acknowledge" | "follow_up" | "clarify" | "reflect_briefly";
 
 const baseUrl = () => (process.env.OLLAMA_BASE_URL ?? "http://127.0.0.1:11434").replace(/\/$/, "");
-export const listenerModel = () => process.env.OLLAMA_MODEL ?? "gemma3:4b";
+export const listenerModel = () => process.env.OLLAMA_MODEL ?? "gemma3:1b";
 export const audioModel = () => process.env.OLLAMA_AUDIO_MODEL ?? "gemma4:e2b";
 
 type OllamaTag = { name?: string; model?: string };
+
+async function warmModel(model: string) {
+  await fetch(`${baseUrl()}/api/generate`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    signal: AbortSignal.timeout(45_000),
+    body: JSON.stringify({ model, prompt: "", stream: false, keep_alive: "10m" }),
+  });
+}
 
 export async function getVoiceStatus() {
   try {
@@ -13,6 +22,7 @@ export async function getVoiceStatus() {
     const data = await response.json() as { models?: OllamaTag[] };
     const names = new Set((data.models ?? []).flatMap((item) => [item.name, item.model]).filter(Boolean));
     const missing = [listenerModel(), audioModel()].filter((model) => !names.has(model));
+    if (missing.length === 0) await Promise.allSettled([warmModel(audioModel()), warmModel(listenerModel())]);
     return { ready: missing.length === 0, missing };
   } catch {
     return { ready: false, missing: [listenerModel(), audioModel()] };
@@ -27,7 +37,9 @@ export async function transcribeAudio(audio: string, format: "wav" | "mp3" = "wa
     body: JSON.stringify({
       model: audioModel(),
       temperature: 0,
-      max_tokens: 220,
+      max_tokens: 128,
+      reasoning_effort: "none",
+      keep_alive: "10m",
       messages: [{
         role: "user",
         content: [
@@ -56,9 +68,10 @@ export async function listenAndRespond(message: string, mode: "vent" | "journal"
     signal: AbortSignal.timeout(60_000),
     body: JSON.stringify({
       model: listenerModel(),
+      keep_alive: "10m",
       stream: false,
       format: "json",
-      options: { temperature: 0.35 },
+      options: { temperature: 0.35, num_predict: 60 },
       messages: [
         {
           role: "system",
