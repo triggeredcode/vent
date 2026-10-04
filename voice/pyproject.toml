@@ -1,7 +1,7 @@
 [project]
 name = "vent-voice"
 version = "0.1.0"
-description = "Local Kokoro-82M (MLX) TTS server for VENT - OpenAI-compatible /v1/audio/speech"
+description = "Local Kokoro-82M + Chatterbox-Turbo voice-clone (MLX) TTS server for VENT - OpenAI-compatible /v1/audio/speech"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "mlx-audio>=0.5.7",

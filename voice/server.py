@@ -1,4 +1,5 @@
-"""VENT local TTS server: Kokoro-82M on Apple Silicon via mlx-audio.
+"""VENT local TTS server: Kokoro-82M on Apple Silicon via mlx-audio,
+plus an optional zero-shot cloned voice ("owner") via Chatterbox-Turbo (mlx-audio).
 
 OpenAI-compatible:  POST /v1/audio/speech  {model, voice, input, response_format, speed, stream?}
 Health:             GET  /health
@@ -14,7 +15,9 @@ import struct
 import subprocess
 import threading
 import time
+from pathlib import Path
 
+os.environ.setdefault("TQDM_DISABLE", "1")  # Chatterbox prints per-request progress bars otherwise
 # espeak-ng (Homebrew) is used by misaki for out-of-vocabulary words and Hindi.
 _BREW_ESPEAK = "/opt/homebrew/opt/espeak-ng"
 if os.path.isdir(_BREW_ESPEAK):
@@ -28,8 +31,22 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
 
 MODEL_REPO = os.environ.get("VENT_TTS_MODEL", "mlx-community/Kokoro-82M-bf16")
-DEFAULT_VOICE = os.environ.get("VENT_TTS_VOICE", "af_heart")
+KOKORO_DEFAULT = "af_heart"
 SAMPLE_RATE = 24000
+
+# Cloned voice: Chatterbox-Turbo (MIT) zero-shot, conditioned once at startup on a reference clip.
+CLONE_VOICE = "owner"
+# 8-bit: ~30% faster than fp16 on an M4 Pro (580 vs 800 ms for an 8-word line), no audible/ASR difference.
+CLONE_MODEL_REPO = os.environ.get("VENT_TTS_CLONE_MODEL", "mlx-community/chatterbox-turbo-8bit")
+# 0.5 instead of the model's 0.8: fewer babble/hallucination tails on very short inputs ("Hmm.").
+CLONE_TEMPERATURE = float(os.environ.get("VENT_TTS_CLONE_TEMPERATURE", "0.5"))
+VOICES_DIR = Path(__file__).resolve().parent / "voices"
+# First existing file wins: the scripted recording beats the cleaned call clip.
+CLONE_REFS = [VOICES_DIR / "owner-script.wav", VOICES_DIR / "owner.wav"]
+# "default"/"vent-calm" -> owner when the clone is loaded (it met the <=1.3 s warm target for an
+# ~8-word line on an M4 Pro), else af_heart. VENT_TTS_DEFAULT_VOICE (or legacy VENT_TTS_VOICE) overrides.
+DEFAULT_VOICE_ENV = os.environ.get("VENT_TTS_DEFAULT_VOICE") or os.environ.get("VENT_TTS_VOICE")
+DEFAULT_VOICE = KOKORO_DEFAULT  # resolved at startup
 
 KOKORO_VOICES = {
     "af_alloy", "af_aoede", "af_bella", "af_heart", "af_jessica", "af_kore", "af_nicole",
@@ -43,7 +60,7 @@ KOKORO_VOICES = {
 }
 # Friendly aliases (OpenAI voice names + app names) -> Kokoro voices.
 ALIASES = {
-    "default": DEFAULT_VOICE, "vent-calm": DEFAULT_VOICE, "calm": DEFAULT_VOICE,
+    "default": KOKORO_DEFAULT, "vent-calm": KOKORO_DEFAULT, "calm": KOKORO_DEFAULT,
     "alloy": "af_heart", "nova": "af_nova", "shimmer": "af_bella", "echo": "am_echo",
     "onyx": "am_onyx", "fable": "bm_fable", "male": "am_michael", "female": "af_heart",
     "hindi": "hf_alpha", "hindi-male": "hm_omega",
@@ -51,6 +68,9 @@ ALIASES = {
 
 app = FastAPI(title="VENT TTS (Kokoro-82M / MLX)")
 _model = None
+_clone = None  # Chatterbox-Turbo model with cached speaker conditionals, or None
+_clone_ref: str | None = None
+_clone_error: str | None = None
 _lock = threading.Lock()  # MLX generation is not thread-safe; serialize.
 _ready = False
 _warm_ms: float | None = None
@@ -60,10 +80,35 @@ def resolve_voice(name: str | None) -> str:
     n = (name or "").strip().lower()
     if n in KOKORO_VOICES:
         return n
+    if n == CLONE_VOICE:
+        return CLONE_VOICE if _clone is not None else DEFAULT_VOICE
     return ALIASES.get(n, DEFAULT_VOICE)
 
 
+def _clone_once(text: str) -> np.ndarray:
+    # Cap speech tokens (25/s) by text length so a short line can't ramble on.
+    max_tokens = min(800, 40 + 4 * len(text))
+    with _lock:
+        parts = [np.asarray(r.audio, dtype=np.float32).reshape(-1)
+                 for r in _clone.generate(text=text, temperature=CLONE_TEMPERATURE, max_tokens=max_tokens)]
+    return np.concatenate(parts) if parts else np.zeros(0, dtype=np.float32)
+
+
+def synth_clone(text: str) -> np.ndarray:
+    # Chatterbox-Turbo has no speed control; `speed` is ignored for the cloned voice.
+    # It's sampled, so short inputs occasionally hallucinate extra words: if the audio is far
+    # longer than the text could plausibly take, regenerate once and keep the shorter take.
+    a = _clone_once(text)
+    limit_s = 1.2 + 0.15 * len(text)
+    if len(a) / SAMPLE_RATE > limit_s:
+        b = _clone_once(text)
+        a = b if len(b) < len(a) else a
+    return a
+
+
 def synth(text: str, voice: str, speed: float) -> np.ndarray:
+    if voice == CLONE_VOICE:
+        return synth_clone(text)
     lang = voice[0]  # Kokoro convention: first letter of voice is the language code
     with _lock:
         parts = [np.asarray(r.audio, dtype=np.float32).reshape(-1)
@@ -117,19 +162,55 @@ class SpeechRequest(BaseModel):
     stream: bool | None = False
 
 
+def _load_clone(load_model) -> None:
+    """Load Chatterbox-Turbo and cache speaker conditioning, only if a reference clip exists."""
+    global _clone, _clone_ref, _clone_error
+    ref = next((p for p in CLONE_REFS if p.is_file()), None)
+    if ref is None:
+        _clone_error = "no reference clip in voice/voices/"
+        print(f"[vent-tts] clone voice '{CLONE_VOICE}' disabled: {_clone_error}", flush=True)
+        return
+    try:
+        t = time.perf_counter()
+        m = load_model(CLONE_MODEL_REPO)
+        m.prepare_conditionals(str(ref))  # speaker embedding + prompt tokens, computed once
+        _clone, _clone_ref = m, ref.name
+        synth_clone("Hey, I'm here.")
+        synth_clone("Hmm, then what?")
+        print(f"[vent-tts] clone voice '{CLONE_VOICE}' ready from {ref.name} "
+              f"({CLONE_MODEL_REPO}, {(time.perf_counter() - t) * 1000:.0f}ms)", flush=True)
+    except Exception as e:  # noqa: BLE001 - server must keep working without the clone
+        _clone, _clone_error = None, f"{type(e).__name__}: {e}"
+        print(f"[vent-tts] clone voice '{CLONE_VOICE}' failed to load (non-fatal): {_clone_error}", flush=True)
+
+
+def _resolve_default() -> str:
+    want = (DEFAULT_VOICE_ENV or (CLONE_VOICE if _clone is not None else KOKORO_DEFAULT)).strip().lower()
+    if want == CLONE_VOICE and _clone is None:
+        print(f"[vent-tts] default voice '{want}' unavailable; using {KOKORO_DEFAULT}", flush=True)
+        return KOKORO_DEFAULT
+    if want != CLONE_VOICE and want not in KOKORO_VOICES:
+        want = ALIASES.get(want, KOKORO_DEFAULT)
+    return want
+
+
 @app.on_event("startup")
 def _startup() -> None:
-    global _model, _ready, _warm_ms
+    global _model, _ready, _warm_ms, DEFAULT_VOICE
     from mlx_audio.tts.utils import load_model
 
     _model = load_model(MODEL_REPO)
     t = time.perf_counter()
-    synth("Hey, I'm here. Take your time.", DEFAULT_VOICE, 1.0)
-    synth("Hmm.", DEFAULT_VOICE, 1.0)
+    synth("Hey, I'm here. Take your time.", KOKORO_DEFAULT, 1.0)
+    synth("Hmm.", KOKORO_DEFAULT, 1.0)
     try:
         synth("Acha.", "hf_alpha", 1.0)  # warm Hindi G2P pipeline too
     except Exception as e:  # noqa: BLE001
         print(f"[vent-tts] Hindi warmup failed (non-fatal): {e}")
+    _load_clone(load_model)
+    DEFAULT_VOICE = _resolve_default()
+    for k in ("default", "vent-calm", "calm"):
+        ALIASES[k] = DEFAULT_VOICE
     _warm_ms = (time.perf_counter() - t) * 1000
     _ready = True
     print(f"[vent-tts] ready: {MODEL_REPO} voice={DEFAULT_VOICE} warmup={_warm_ms:.0f}ms", flush=True)
@@ -138,12 +219,15 @@ def _startup() -> None:
 @app.get("/health")
 def health():
     return {"ready": _ready, "model": MODEL_REPO, "engine": "kokoro-82m (mlx-audio)",
-            "voice": DEFAULT_VOICE, "sample_rate": SAMPLE_RATE, "warmup_ms": _warm_ms}
+            "voice": DEFAULT_VOICE, "sample_rate": SAMPLE_RATE, "warmup_ms": _warm_ms,
+            "clone": {"voice": CLONE_VOICE, "loaded": _clone is not None, "model": CLONE_MODEL_REPO,
+                      "reference": _clone_ref, "error": _clone_error}}
 
 
 @app.get("/v1/audio/voices")
 def voices():
-    return {"default": DEFAULT_VOICE, "voices": sorted(KOKORO_VOICES), "aliases": ALIASES}
+    cloned = [CLONE_VOICE] if _clone is not None else []
+    return {"default": DEFAULT_VOICE, "voices": cloned + sorted(KOKORO_VOICES), "aliases": ALIASES}
 
 
 @app.post("/v1/audio/speech")
