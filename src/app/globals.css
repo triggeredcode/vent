@@ -57,7 +57,7 @@ h1, h2, h3, p { margin-top: 0; }
 /* ───────── Home: editorial cover ───────── */
 .home-screen { height: 100%; min-height: 0; padding-top: 4px; padding-bottom: 6px; display: flex; flex-direction: column; overflow: hidden; }
 .editorial-cover { min-height: 0; flex: 1 1 auto; display: flex; flex-direction: column; position: relative; }
-.cover-title { position: relative; z-index: 3; margin: 16px 0 -8px; font-family: var(--display); font-size: clamp(49px, 13vw, 61px); font-weight: 500; line-height: .86; letter-spacing: -.07em; }
+.cover-title { position: relative; z-index: 3; margin: 14px 0 12px; font-family: var(--display); font-size: clamp(49px, 13vw, 61px); font-weight: 500; line-height: .86; letter-spacing: -.07em; }
 .cover-title em, .memory-headline em, .after-copy h1 em { color: var(--tomato); font-weight: 400; }
 
 .cover-call { width: 100%; min-height: 220px; flex: 1 1 auto; position: relative; overflow: hidden; border: 0; border-radius: 2px 2px 32px 2px; background: var(--sun); text-align: left; container-type: size; transition: background .5s ease, color .5s ease; }
@@ -68,16 +68,12 @@ h1, h2, h3, p { margin-top: 0; }
 .scene-switch button.selected { background: currentColor; opacity: 1; }
 .cover-breathe .scene-switch button.selected { color: var(--sun); background: var(--ink); }
 .cover-punch .scene-switch button.selected { color: #1b0f0e; background: #fff4ec; }
-.cover-sweat .scene-switch button.selected { color: #c6f432; background: #111; }
 .cover-art { position: relative; z-index: 2; width: min(84cqh, 300px); max-width: 82cqw; aspect-ratio: 1; display: grid; place-items: center; animation: enter .45s ease both; }
 .cover-art > * { width: 100%; height: 100%; }
 .cover-punch .cover-shape-a { background: #e8402f; }
 .cover-punch .cover-shape-b, .cover-punch .cover-call:after { background: #ffd23f; }
 .cover-punch:after { border-color: rgba(255,244,236,.2); }
 .cover-punch .cover-phone { background: #e8402f; }
-.cover-sweat .cover-shape-a { background: #ff4fa3; }
-.cover-sweat .cover-shape-b { background: #3a5bff; }
-.cover-sweat .cover-phone { background: #111; }
 .cover-call:after { content: ""; position: absolute; width: 180px; height: 180px; border: 1px solid rgba(37,48,43,.19); border-radius: 50%; right: -62px; top: -72px; }
 .cover-shape-a { position: absolute; width: 34cqh; height: 34cqh; left: -12cqh; bottom: 20cqh; border-radius: 50%; background: var(--coral); opacity: .9; }
 .cover-shape-b { position: absolute; width: 16px; height: 16px; right: 26%; top: 18%; border-radius: 50%; background: var(--forest); }

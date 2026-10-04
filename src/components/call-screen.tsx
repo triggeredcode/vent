@@ -61,7 +61,7 @@ function playRing(context: AudioContext, at: number) {
   });
 }
 
-const sceneFlavor: Record<VentScene, CallFlavor> = { breathe: "calm", punch: "fired", sweat: "breathless" };
+const sceneFlavor: Record<VentScene, CallFlavor> = { breathe: "calm", punch: "fired" };
 
 const wait = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 

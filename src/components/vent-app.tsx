@@ -60,7 +60,7 @@ export function VentApp() {
     try {
       const saved = window.localStorage.getItem("vent-scene");
       // eslint-disable-next-line react-hooks/set-state-in-effect -- restoring a per-device preference after hydration
-      if (saved === "breathe" || saved === "punch" || saved === "sweat") setScene(saved);
+      if (saved === "breathe" || saved === "punch") setScene(saved);
     } catch { /* storage unavailable */ }
   }, []);
 

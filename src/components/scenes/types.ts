@@ -1,6 +1,6 @@
 import type { ListenerTone } from "@/lib/types";
 
-export type VentScene = "breathe" | "punch" | "sweat";
+export type VentScene = "breathe" | "punch";
 
 export type CallPhase = "connecting" | "ringing" | "listening" | "hearing" | "thinking" | "speaking" | "error";
 

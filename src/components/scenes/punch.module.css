@@ -424,7 +424,7 @@
 
 .face { transform: translateX(7px); transition: transform .35s cubic-bezier(.3, 1.4, .5, 1); }
 .pupil { transform: translateX(2.5px); transition: transform .3s ease; }
-.eyes > g { animation: blink 4.6s infinite; transform-box: fill-box; transform-origin: 50% 50%; }
+.blink { animation: blink 4.6s infinite; transform-box: fill-box; transform-origin: 50% 50%; }
 @keyframes blink { 0%, 95%, 100% { scale: 1 1; } 97% { scale: 1 .1; } }
 
 .mouthOpen, .mouthPant, .sweat { opacity: 0; }

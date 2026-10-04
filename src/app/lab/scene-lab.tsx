@@ -7,7 +7,7 @@ import type { ListenerTone } from "@/lib/types";
 
 /** Renders a call screen with simulated mic/voice levels so scenes can be crafted without a real call. */
 export function SceneLab({ scene = "breathe", phase = "listening", tone }: { scene?: string; phase?: string; tone?: string }) {
-  const id = (["breathe", "punch", "sweat"].includes(scene) ? scene : "breathe") as VentScene;
+  const id = (["breathe", "punch"].includes(scene) ? scene : "breathe") as VentScene;
   const active = scenes[id];
   const hostRef = useRef<HTMLDivElement>(null);
   const listeners = useRef(new Set<(level: number) => void>());

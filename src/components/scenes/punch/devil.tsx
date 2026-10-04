@@ -342,8 +342,9 @@ export function Devil({ id, pose = "fight" }: { id: string; pose?: keyof typeof 
               <g className={styles.face}>
                 <ellipse cx="47" cy="-183" rx="9" ry="6" fill={`url(#${id}-blush)`} />
                 <g className={styles.eyes}>
-                  <g transform="translate(-10 -204)"><Eye id={id} /></g>
-                  <g transform="translate(26 -204)"><Eye id={id} flip /></g>
+                  {/* The blink lives on an inner group: CSS scale on a group would replace its translate. */}
+                  <g transform="translate(-10 -204)"><g className={styles.blink}><Eye id={id} /></g></g>
+                  <g transform="translate(26 -204)"><g className={styles.blink}><Eye id={id} flip /></g></g>
                 </g>
                 <g data-part="brows">
                   <g className={styles.brows}>
