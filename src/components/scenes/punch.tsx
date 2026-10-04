@@ -2,6 +2,7 @@ import { Anton, Oswald } from "next/font/google";
 import { useEffect, useId, useRef } from "react";
 import type { SceneModule, SceneProps } from "./types";
 import { armPath, Devil, DevilDefs, GUARD, gloveTransform, HIP, SHOULDER, type Point } from "./punch/devil";
+import { buildMark, HITS_PER_BAG, markPosition } from "./punch/damage";
 import { PunchSfx } from "./punch/sfx";
 import styles from "./punch.module.css";
 
@@ -39,6 +40,11 @@ const IMPACT_WORDS = ["BOOM", "CRACK", "WHAM", "THUD"];
 const SPARKS = Array.from({ length: 10 }, (_, i) => ({ len: 11 + ((i * 5) % 9), width: 1.6 + ((i * 3) % 3) * 0.6 }));
 const CINDERS = Array.from({ length: 8 }, (_, i) => ({ r: 1.3 + ((i * 7) % 4) * 0.4 }));
 const DUST = Array.from({ length: 5 }, (_, i) => ({ r: 11 + ((i * 5) % 4) * 3 }));
+/** Stuffing tufts and sand that fly out of torn and bursting bags. */
+const STUFFING = Array.from({ length: 14 }, (_, i) => ({ r: i % 3 === 2 ? 1 : 2.2 + ((i * 7) % 4) * 0.7, sand: i % 3 === 2 }));
+const BAG_BOX = { left: BAG_LEFT, width: 84, top: 126, bottom: 322 };
+/** The printed "HIT ME" patch, which marks steer around. */
+const PATCH = { x: BAG_X - 31, y: 192, width: 62, height: 70 };
 
 const rand = (min: number, max: number) => min + Math.random() * (max - min);
 
@@ -147,6 +153,13 @@ function PunchStage({ phase, tone, muted, subscribeLevel }: SceneProps) {
   const bagShadowRef = useRef<SVGGElement>(null);
   const dentRef = useRef<SVGEllipseElement>(null);
   const fxRef = useRef<SVGGElement>(null);
+  const bagRigRef = useRef<SVGGElement>(null);
+  const bagDropRef = useRef<SVGGElement>(null);
+  const damageRef = useRef<SVGGElement>(null);
+  const grimeRef = useRef<SVGRectElement>(null);
+  const stampRef = useRef<SVGGElement>(null);
+  const stampTextRef = useRef<SVGTextElement>(null);
+  const bagsRef = useRef<HTMLSpanElement>(null);
   const hitsRef = useRef<HTMLSpanElement>(null);
   const comboRef = useRef<HTMLDivElement>(null);
 
@@ -157,7 +170,14 @@ function PunchStage({ phase, tone, muted, subscribeLevel }: SceneProps) {
     const [upperEl, headEl, tailEl, browsEl, leadArmEl, rearArmEl, leadGloveEl, rearGloveEl, leadStreakEl, rearStreakEl] =
       ["upper", "head", "tail", "brows", "leadArm", "rearArm", "leadGlove", "rearGlove", "leadStreak", "rearStreak"].map(part);
     const fxPart = (name: string) => Array.from(fxRef.current?.querySelectorAll<SVGElement>(`[data-fx="${name}"]`) ?? []);
-    const [flashEls, ringEls, sparkEls, cinderEls, dustEls, wordEls] = ["flash", "ring", "spark", "cinder", "dust", "word"].map(fxPart);
+    const [flashEls, ringEls, sparkEls, cinderEls, dustEls, wordEls, stuffEls] = ["flash", "ring", "spark", "cinder", "dust", "word", "stuff"].map(fxPart);
+    /** Hits taken by the bag currently hanging (0–19), bags destroyed so far, and whether one is going down. */
+    let damage = 0;
+    let bagsDown = 0;
+    let knockedOut = false;
+    const timers: number[] = [];
+    const scars: { x: number; y: number }[] = [];
+    const later = (ms: number, fn: () => void) => { timers.push(window.setTimeout(fn, ms)); };
     const arms: Record<ArmKey, ArmState> = {
       lead: { kind: null, t0: 0, dur: 1, power: 0, landed: false, air: false, idle: false },
       rear: { kind: null, t0: 0, dur: 1, power: 0, landed: false, air: false, idle: false },
@@ -203,8 +223,15 @@ function PunchStage({ phase, tone, muted, subscribeLevel }: SceneProps) {
     };
 
     /** Shockwave, sparks, cinders and dust where the glove meets the bag. */
-    const burst = (x: number, y: number, power: number, big: boolean) => {
+    const burst = (x: number, y: number, power: number, big: boolean, dustOnly = false) => {
       fxRef.current?.setAttribute("transform", `translate(${x.toFixed(1)} ${y.toFixed(1)})`);
+      if (dustOnly) {
+        dustEls.forEach((el) => el.animate([
+          { opacity: 0.5, transform: `translate(${rand(-20, 20).toFixed(1)}px,0px) scale(.4)` },
+          { opacity: 0, transform: `translate(${rand(-60, 60).toFixed(1)}px,${rand(-22, -8).toFixed(1)}px) scale(${rand(1.8, 2.6).toFixed(2)})` },
+        ], { duration: rand(700, 1000), easing: "cubic-bezier(.2,.6,.3,1)" }));
+        return;
+      }
       const k = 0.65 + power * 0.55 + (big ? 0.25 : 0);
       flashEls.forEach((el) => el.animate([
         { opacity: 0.95, transform: `scale(${0.45 * k})` },
@@ -262,13 +289,136 @@ function PunchStage({ phase, tone, muted, subscribeLevel }: SceneProps) {
       }
     };
 
+    /** Stuffing tufts and sand thrown out of the bag; `count` of the pool, `force` scales the spread. */
+    const spill = (count: number, force: number) => {
+      if (reduced) return;
+      stuffEls.forEach((el, i) => {
+        if (i >= count) return;
+        const a = ((180 + rand(-110, 110)) * Math.PI) / 180;
+        const d = rand(14, 40) * force;
+        const dx = Math.cos(a) * d + 6;
+        const dy = Math.sin(a) * d - 8 * force;
+        const spin = rand(-120, 120);
+        el.animate([
+          { opacity: 1, transform: "translate(0px,0px) rotate(0deg) scale(.5)" },
+          { opacity: 1, transform: `translate(${dx * 0.7}px,${dy * 0.7}px) rotate(${spin * 0.5}deg) scale(1)`, offset: 0.3 },
+          { opacity: 0, transform: `translate(${dx}px,${dy + rand(40, 90) * force}px) rotate(${spin}deg) scale(.9)` },
+        ], { duration: rand(700, 1100) * (0.7 + force * 0.3), easing: "cubic-bezier(.2,.6,.5,1)" });
+      });
+    };
+
+    /** Adds this hit's mark to the bag and makes the whole bag look a little more beaten. */
+    const scar = (n: number, strikeY: number) => {
+      const { x, y, angle } = markPosition(n, strikeY, BAG_BOX, scars, PATCH);
+      scars.push({ x, y });
+      const mark = buildMark(n, x, y, angle, uid, { sand: styles.sandGrain });
+      damageRef.current?.appendChild(mark);
+      mark.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 140, easing: "ease-out" });
+      grimeRef.current?.setAttribute("opacity", ((n / HITS_PER_BAG) * 0.42).toFixed(3));
+    };
+
+    const clearDamage = () => {
+      damage = 0;
+      scars.length = 0;
+      damageRef.current?.replaceChildren();
+      grimeRef.current?.setAttribute("opacity", "0");
+    };
+
+    /** The 20th hit: the bag bursts and comes off its chain, a KO stamp, then a fresh bag is lowered in. */
+    const knockout = (x: number, y: number) => {
+      knockedOut = true;
+      bagsDown += 1;
+      const quietUntil = canSound() ? sfx.knockout() : 0;
+      heard(quietUntil);
+      burst(x, y, 1, true);
+      spill(stuffEls.length, 1.6);
+      bag.velocity += 0.9;
+      impactBus.forEach((listener) => listener({ power: 1, big: true }));
+
+      if (bagsRef.current) {
+        bagsRef.current.textContent = String(bagsDown);
+        bagsRef.current.animate([{ transform: "scale(1.6)", color: "#ffe9a8" }, { transform: "scale(1)" }], { duration: 420, easing: "cubic-bezier(.2,1.6,.4,1)" });
+      }
+      if (stampTextRef.current) stampTextRef.current.textContent = `BAG ${String(bagsDown).padStart(2, "0")}`;
+      later(reduced ? 120 : 260, () => {
+        stampRef.current?.animate(reduced
+          ? [{ opacity: 0 }, { opacity: 1, offset: 0.15 }, { opacity: 1, offset: 0.8 }, { opacity: 0 }]
+          : [
+            { opacity: 0, transform: "scale(1.7) rotate(-14deg)" },
+            { opacity: 1, transform: "scale(.94) rotate(-6deg)", offset: 0.1 },
+            { opacity: 1, transform: "scale(1) rotate(-7deg)", offset: 0.16 },
+            { opacity: 1, transform: "scale(1.02) rotate(-7deg)", offset: 0.82 },
+            { opacity: 0, transform: "scale(1.08) rotate(-7deg)" },
+          ], { duration: 1500, easing: "ease-out" });
+      });
+
+      const drop = bagDropRef.current;
+      const rig = bagRigRef.current;
+      const fallTime = reduced ? 380 : 1250;
+      drop?.animate(reduced
+        ? [{ opacity: 1 }, { opacity: 0 }]
+        : [
+          { transform: "translate(0px,0px) rotate(0deg)" },
+          { transform: "translate(2px,-8px) rotate(-3deg)", offset: 0.08 },
+          { transform: "translate(5px,52px) rotate(2deg)", offset: 0.36, easing: "ease-out" },
+          { transform: "translate(5px,58px) scale(1.06,.84) rotate(2deg)", offset: 0.42 },
+          { transform: "translate(8px,52px) scale(.98,1.02) rotate(10deg)", offset: 0.56 },
+          { transform: "translate(26px,56px) rotate(80deg)", offset: 0.84, opacity: 1 },
+          { transform: "translate(30px,58px) rotate(84deg)", opacity: 0 },
+        ], { duration: fallTime, fill: "forwards", easing: "cubic-bezier(.45,0,.7,1)" });
+      if (!reduced) {
+        // Dust kicked up where the bag slams into the floor.
+        later(fallTime * 0.4, () => {
+          burst(BAG_X, FLOOR_Y - 4, 0.6, false, true);
+          rootRef.current?.animate([{ transform: "translate(0,0)" }, { transform: "translate(0,3px)" }, { transform: "translate(0,-1px)" }, { transform: "translate(0,0)" }], { duration: 220, easing: "ease-out" });
+        });
+        // The empty chain is hauled up out of frame before the new bag comes down.
+        later(fallTime + 100, () => {
+          rig?.animate([{ transform: "translateY(0px)" }, { transform: "translateY(-300px)" }], { duration: 420, fill: "forwards", easing: "cubic-bezier(.5,0,.8,.4)" });
+        });
+      }
+
+      const swap = reduced ? fallTime + 150 : fallTime + 600;
+      later(swap, () => {
+        clearDamage();
+        drop?.getAnimations().forEach((a) => a.cancel());
+        if (reduced) {
+          drop?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 380, easing: "ease-out" });
+        } else {
+          rig?.getAnimations().forEach((a) => a.cancel());
+          rig?.animate([
+            { transform: "translateY(-300px)" },
+            { transform: "translateY(10px)", offset: 0.6, easing: "ease-out" },
+            { transform: "translateY(-5px)", offset: 0.8 },
+            { transform: "translateY(0px)" },
+          ], { duration: 900, easing: "cubic-bezier(.3,0,.6,1)" });
+          later(540, () => { bag.velocity += 0.35; });
+        }
+        if (canSound()) heard(sfx.clank(reduced ? 0.05 : 0.42));
+      });
+      const done = swap + (reduced ? 400 : 950);
+      // The bag's floor shadow leaves with it and returns with the new one.
+      bagShadowRef.current?.animate([
+        { opacity: 1 }, { opacity: 0, offset: (fallTime * 0.9) / done }, { opacity: 0, offset: (swap + 300) / done }, { opacity: 1 },
+      ], { duration: done });
+      // No punches while there is no bag to hit.
+      deafUntil = Math.max(deafUntil, performance.now() + done);
+      later(done, () => { knockedOut = false; });
+    };
+
     const land = (arm: ArmState, glove: Point) => {
+      if (knockedOut) return;
       const kind = arm.kind!;
       const spec = PUNCHES[kind];
       const now = performance.now();
       const big = kind === "upper" || arm.power > 0.78;
-      // Sound first: it is the most immediate feedback.
-      if (canSound()) heard(sfx.hit(kind, arm.power));
+      damage += 1;
+      const finishing = damage >= HITS_PER_BAG;
+      // Sound first: it is the most immediate feedback. The finishing blow's thump is the burst itself.
+      if (canSound() && !finishing) {
+        heard(sfx.hit(kind, arm.power));
+        if (damage >= 12) heard(sfx.rip(Math.min(1, (damage - 11) / 7) * (0.6 + 0.4 * arm.power)));
+      }
       bag.velocity += (0.07 + arm.power * 0.16) * spec.push;
       bag.squash = Math.min(1, 0.45 + arm.power);
       // The glove's leading face, i.e. the bag's surface where it is struck.
@@ -294,7 +444,12 @@ function PunchStage({ phase, tone, muted, subscribeLevel }: SceneProps) {
         ], { duration: 900, easing: "ease-out" });
       }
 
-      burst(gx, gy, arm.power, big);
+      if (finishing) knockout(gx, gy);
+      else {
+        burst(gx, gy, arm.power, big);
+        scar(damage, gy);
+        if (damage >= 15) spill(2 + (damage - 15), 0.6);
+      }
 
       if (!reduced) {
         const s = (big ? 6 : 2.5) * (0.6 + arm.power);
@@ -431,17 +586,28 @@ function PunchStage({ phase, tone, muted, subscribeLevel }: SceneProps) {
       const deg = (-bag.angle * 180) / Math.PI;
       set(bagRef.current, "transform", `rotate(${deg.toFixed(2)} ${BAG_X} ${BAG_PIVOT_Y})`);
       const sq = bag.squash;
-      set(bagBodyRef.current, "transform", `translate(${BAG_X} 222) scale(${(1 - 0.12 * sq).toFixed(3)} ${(1 + 0.04 * sq).toFixed(3)}) skewY(${(sq * -4).toFixed(2)}) translate(${-BAG_X} -222)`);
+      // A beaten bag sags: it stretches a little lower and its bottom bulges.
+      const sag = (damage / HITS_PER_BAG) ** 1.5;
+      set(bagBodyRef.current, "transform", `translate(${BAG_X} 126) scale(${(1 - 0.12 * sq + 0.03 * sag).toFixed(3)} ${(1 + 0.04 * sq + 0.045 * sag).toFixed(3)}) skewY(${(sq * -4).toFixed(2)}) translate(${-BAG_X} -126)`);
       set(bagShadowRef.current, "transform", `translate(${(BAG_X + Math.sin(bag.angle) * (FLOOR_Y - BAG_PIVOT_Y)).toFixed(1)} ${FLOOR_Y + 3})`);
     };
     frame = requestAnimationFrame(step);
-    return () => { cancelAnimationFrame(frame); unsubscribe(); sfx.close(); };
-  }, [subscribeLevel]);
+    return () => {
+      cancelAnimationFrame(frame);
+      unsubscribe();
+      sfx.close();
+      timers.forEach((t) => window.clearTimeout(t));
+      clearDamage();
+    };
+  }, [subscribeLevel, uid]);
 
   const pose = poseOf(phase);
   return <div ref={rootRef} className={`${styles.stage} ${fonts} ${styles[`pose_${pose}`]} ${muted ? styles.isMuted : ""}`} data-tone={tone ?? "none"}>
     <div className={styles.hud}>
-      <div className={styles.hits}><small>HITS</small><span ref={hitsRef}>000</span></div>
+      <div className={styles.hudRow}>
+        <div className={styles.hits}><small>HITS</small><span ref={hitsRef}>000</span></div>
+        <div className={styles.bags}><small>BAGS</small><span ref={bagsRef}>0</span></div>
+      </div>
       <div className={styles.rage}><small>RAGE</small><i><b /></i></div>
       <div ref={comboRef} className={styles.combo} />
     </div>
@@ -510,6 +676,31 @@ function PunchStage({ phase, tone, muted, subscribeLevel }: SceneProps) {
           <stop offset="0" stopColor="#000" stopOpacity="0.8" />
           <stop offset="1" stopColor="#000" stopOpacity="0" />
         </radialGradient>
+        <radialGradient id={`${uid}-scuff`} cx="0.5" cy="0.5" r="0.5">
+          <stop offset="0" stopColor="#140101" stopOpacity="0.75" />
+          <stop offset="0.6" stopColor="#2a0403" stopOpacity="0.35" />
+          <stop offset="1" stopColor="#2a0403" stopOpacity="0" />
+        </radialGradient>
+        <radialGradient id={`${uid}-hollow`} cx="0.42" cy="0.5" r="0.55">
+          <stop offset="0" stopColor="#0a0000" stopOpacity="0.85" />
+          <stop offset="0.7" stopColor="#1a0202" stopOpacity="0.3" />
+          <stop offset="1" stopColor="#1a0202" stopOpacity="0" />
+        </radialGradient>
+        <radialGradient id={`${uid}-tear`} cx="0.5" cy="0.45" r="0.6">
+          <stop offset="0" stopColor="#050000" />
+          <stop offset="0.75" stopColor="#1e0302" />
+          <stop offset="1" stopColor="#4a0a06" />
+        </radialGradient>
+        <radialGradient id={`${uid}-stuff`} cx="0.42" cy="0.38" r="0.62">
+          <stop offset="0" stopColor="#f2e4cc" />
+          <stop offset="0.45" stopColor="#c9b394" stopOpacity="0.9" />
+          <stop offset="1" stopColor="#6a5440" stopOpacity="0" />
+        </radialGradient>
+        <linearGradient id={`${uid}-stampInk`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#fffbe8" />
+          <stop offset="0.45" stopColor="#ffd65a" />
+          <stop offset="1" stopColor="#ff7a1f" />
+        </linearGradient>
         <clipPath id={`${uid}-bagClip`}><rect x={BAG_LEFT} y="126" width="84" height="196" rx="24" /></clipPath>
       </defs>
 
@@ -521,6 +712,7 @@ function PunchStage({ phase, tone, muted, subscribeLevel }: SceneProps) {
       </g>
 
       {/* Heavy bag */}
+      <g ref={bagRigRef}>
       <g ref={bagRef}>
         <g fill="none" stroke={`url(#${uid}-chain)`} strokeWidth="3.2">
           {Array.from({ length: 17 }, (_, i) => {
@@ -530,6 +722,7 @@ function PunchStage({ phase, tone, muted, subscribeLevel }: SceneProps) {
               : <path key={i} d={`M${BAG_X} ${y} L${BAG_X} ${y + 14}`} strokeWidth="5" />;
           })}
         </g>
+        <g ref={bagDropRef} className={styles.bagDrop}>
         <circle cx={BAG_X} cy="103" r="7" fill="none" stroke="#efe2d0" strokeWidth="3.5" />
         <g strokeLinecap="round">
           {[-36, -13, 13, 36].map((dx) => <g key={dx}>
@@ -565,8 +758,13 @@ function PunchStage({ phase, tone, muted, subscribeLevel }: SceneProps) {
             <text x={BAG_X} y="253" textAnchor="middle" className={styles.bagText}>ME</text>
             <rect x={BAG_X - 29} y="194" width="58" height="20" rx="7" fill="#fff" opacity="0.18" />
           </g>
+          {/* Accumulated damage: grime darkens the leather, marks are added hit by hit. */}
+          <rect ref={grimeRef} x={BAG_LEFT} y="126" width="84" height="196" rx="24" fill="#0c0101" opacity="0" />
+          <g ref={damageRef} />
           <ellipse ref={dentRef} cx={BAG_LEFT + 7} cy="210" rx="9" ry="22" fill={`url(#${uid}-dent)`} opacity="0" />
         </g>
+        </g>
+      </g>
       </g>
 
       {/* Fire aura when fired up */}
@@ -589,7 +787,18 @@ function PunchStage({ phase, tone, muted, subscribeLevel }: SceneProps) {
         <ellipse data-fx="ring" rx="13" ry="34" fill="none" stroke="#ffa860" strokeWidth="2" />
         {SPARKS.map((sp, i) => <path key={`s${i}`} data-fx="spark" d={`M0 0 L${sp.len} 0`} stroke="#ffeec8" strokeWidth={sp.width} strokeLinecap="round" />)}
         {CINDERS.map((c, i) => <circle key={`c${i}`} data-fx="cinder" r={c.r} fill="#ffc46a" />)}
+        {STUFFING.map((st, i) => <circle key={`f${i}`} data-fx="stuff" r={st.r} fill={st.sand ? "#e8c89a" : `url(#${uid}-stuff)`} />)}
         <text data-fx="word" className={styles.fxWord} x="22" y="-40" textAnchor="middle">BOOM</text>
+      </g>
+
+      {/* KO stamp, where the bag used to hang */}
+      <g transform={`translate(${BAG_X - 14} 196)`}>
+        <g ref={stampRef} className={styles.stamp}>
+          <rect x="-78" y="-36" width="156" height="72" rx="8" fill="#140302" fillOpacity="0.78" stroke="#ffcf8a" strokeOpacity="0.85" strokeWidth="1.6" />
+          <rect x="-72" y="-30" width="144" height="60" rx="5" fill="none" stroke="#ffcf8a" strokeOpacity="0.3" strokeWidth="1" />
+          <text ref={stampTextRef} className={styles.stampTitle} y="8" textAnchor="middle" fill={`url(#${uid}-stampInk)`}>BAG 01</text>
+          <text className={styles.stampSub} y="24" textAnchor="middle">DOWN</text>
+        </g>
       </g>
     </svg>
   </div>;

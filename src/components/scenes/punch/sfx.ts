@@ -156,6 +156,109 @@ export function synthWhoosh(v: Voice, t: number, power: number): number {
 }
 
 /**
+ * Leather tearing: a crackle of tiny high-passed noise bursts at irregular intervals, layered on
+ * top of a hit once the bag is badly damaged. `severity` is 0–1. Returns its length in seconds.
+ */
+export function synthRip(v: Voice, t: number, severity: number): number {
+  const s = Math.max(0, Math.min(1, severity));
+  const length = (0.12 + 0.1 * s) * rand(0.85, 1.15);
+  const hp = filter(v, "highpass", rand(900, 1400), 0.7);
+  const bp = filter(v, "bandpass", rand(2200, 3400), 0.9);
+  hp.connect(bp);
+  const bus = v.ctx.createGain();
+  bus.gain.value = (0.32 + 0.22 * s) * rand(0.85, 1.05);
+  bp.connect(bus).connect(v.out);
+  let at = t + 0.012;
+  while (at < t + length) {
+    const grain = rand(0.003, 0.011);
+    const g = v.ctx.createGain();
+    const peak = rand(0.35, 1) * (1 - ((at - t) / length) * 0.6);
+    g.gain.setValueAtTime(0.0001, at);
+    g.gain.exponentialRampToValueAtTime(peak, at + 0.0012);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + grain);
+    g.connect(hp);
+    noise(v, at, grain + 0.002).connect(g);
+    at += grain + rand(0.002, 0.018);
+  }
+  return length + 0.02;
+}
+
+/** The bag bursting: a deep boom, a stuffing whoomp and a long sand hiss. Returns its length in seconds. */
+export function synthBurst(v: Voice, t: number): number {
+  const boom = v.ctx.createOscillator();
+  boom.type = "sine";
+  boom.frequency.setValueAtTime(rand(95, 110), t);
+  boom.frequency.exponentialRampToValueAtTime(rand(30, 36), t + 0.32);
+  boom.connect(envelope(v, t, 0.55, 0.006, 0.34));
+  boom.start(t);
+  boom.stop(t + 0.4);
+
+  const whoomp = filter(v, "lowpass", 1800, 0.9);
+  whoomp.frequency.setValueAtTime(2200, t);
+  whoomp.frequency.exponentialRampToValueAtTime(220, t + 0.25);
+  noise(v, t, 0.3).connect(whoomp).connect(envelope(v, t, 0.42, 0.004, 0.26));
+
+  // Sand pouring out: a soft hiss that swells then thins.
+  const sand = filter(v, "bandpass", rand(4500, 6000), 0.8);
+  const g = v.ctx.createGain();
+  g.gain.setValueAtTime(0.0001, t + 0.05);
+  g.gain.exponentialRampToValueAtTime(0.13, t + 0.14);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.48 + 0.3);
+  g.connect(v.out);
+  noise(v, t + 0.05, 0.47).connect(sand).connect(g);
+  return 0.8;
+}
+
+/** One strike of a boxing ring bell: inharmonic partials with a long, bright decay. */
+function bellStrike(v: Voice, t: number, level: number) {
+  const base = rand(1180, 1240);
+  const partials: [number, number, number][] = [[1, 1, 1.1], [2.76, 0.42, 0.7], [5.4, 0.22, 0.4], [8.93, 0.1, 0.22]];
+  partials.forEach(([ratio, gain, decay]) => {
+    const o = v.ctx.createOscillator();
+    o.type = "sine";
+    o.frequency.value = base * ratio;
+    o.connect(envelope(v, t, level * gain, 0.002, decay));
+    o.start(t);
+    o.stop(t + decay + 0.05);
+  });
+}
+
+/** The KO bell: "ding-ding". Returns its length in seconds. */
+export function synthBell(v: Voice, t: number): number {
+  bellStrike(v, t, 0.12);
+  bellStrike(v, t + 0.2, 0.105);
+  return 0.2 + 1.15;
+}
+
+/** A fresh bag lowered in on its chain: a run of metallic clinks, then a clunk as it settles. */
+export function synthClank(v: Voice, t: number): number {
+  const clinks = 4 + Math.floor(Math.random() * 3);
+  let at = t;
+  for (let i = 0; i < clinks; i++) {
+    const level = 0.24 * (0.55 + Math.random() * 0.45);
+    noise(v, at, 0.03).connect(filter(v, "bandpass", rand(2600, 5200), rand(6, 12))).connect(envelope(v, at, level, 0.001, 0.035));
+    [1, 2.31, 3.7].forEach((ratio, k) => {
+      const o = v.ctx.createOscillator();
+      o.type = "sine";
+      o.frequency.value = rand(1500, 2100) * ratio;
+      o.connect(envelope(v, at, level * (0.09 / (k + 1)), 0.001, 0.06 + 0.03 * (2 - k)));
+      o.start(at);
+      o.stop(at + 0.15);
+    });
+    at += rand(0.035, 0.07);
+  }
+  // The bag's weight taking up the chain.
+  const clunk = v.ctx.createOscillator();
+  clunk.type = "sine";
+  clunk.frequency.setValueAtTime(130, at);
+  clunk.frequency.exponentialRampToValueAtTime(60, at + 0.1);
+  clunk.connect(envelope(v, at, 0.28, 0.003, 0.11));
+  clunk.start(at);
+  clunk.stop(at + 0.15);
+  return at - t + 0.16;
+}
+
+/**
  * One AudioContext per Stage, created lazily on the first sound (the call was started by a click,
  * so the page already has user activation) and closed when the Stage unmounts.
  */
@@ -204,6 +307,30 @@ export class PunchSfx {
     const v = this.ready();
     if (!v) return 0;
     return this.endsAt(delay + synthWhoosh(v, v.ctx.currentTime + 0.005 + delay, power));
+  }
+
+  /** A tearing layer, played alongside a hit once the bag is badly damaged. */
+  rip(severity: number): number {
+    const v = this.ready();
+    if (!v) return 0;
+    return this.endsAt(synthRip(v, v.ctx.currentTime + 0.01, severity));
+  }
+
+  /** The bag bursts, then the bell rings "ding-ding". */
+  knockout(): number {
+    const v = this.ready();
+    if (!v) return 0;
+    const t = v.ctx.currentTime + 0.01;
+    const burst = synthBurst(v, t);
+    const bell = 0.32 + synthBell(v, t + 0.32);
+    return this.endsAt(Math.max(burst, bell));
+  }
+
+  /** Chain clinks as a fresh bag is lowered in, starting `delay` seconds from now. */
+  clank(delay = 0): number {
+    const v = this.ready();
+    if (!v) return 0;
+    return this.endsAt(delay + synthClank(v, v.ctx.currentTime + 0.01 + delay));
   }
 
   close() {

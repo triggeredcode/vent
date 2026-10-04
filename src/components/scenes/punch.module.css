@@ -281,6 +281,35 @@
   color: #fff4ec;
   text-shadow: 2px 2px 0 #4a0402;
 }
+.hudRow { display: flex; align-items: stretch; gap: 8px; }
+.bags {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 3px 9px 2px 8px;
+  transform: skewX(-10deg);
+  background: linear-gradient(180deg, rgba(40, 8, 6, .85), rgba(14, 3, 2, .85));
+  border: 1px solid rgba(255, 92, 48, .38);
+  box-shadow: 0 0 18px rgba(255, 60, 20, .18);
+}
+.bags small {
+  font-family: var(--punch-oswald), sans-serif;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .24em;
+  color: #ff8a66;
+  padding-bottom: 5px;
+}
+.bags span {
+  display: inline-block;
+  min-width: .6em;
+  font-family: var(--punch-anton), Impact, sans-serif;
+  font-size: 22px;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  color: #ffd65a;
+  text-shadow: 0 0 10px rgba(255, 140, 30, .6);
+}
 .rage { display: flex; align-items: center; gap: 7px; }
 .rage small {
   font-family: var(--punch-oswald), sans-serif;
@@ -327,6 +356,30 @@
   paint-order: stroke;
   stroke: rgba(255, 255, 255, .35);
   stroke-width: .6px;
+}
+
+/* Bag damage + knockout */
+.bagDrop { transform-box: fill-box; transform-origin: 50% 100%; }
+.sandGrain { animation: sand-fall .95s linear infinite; opacity: 0; }
+@keyframes sand-fall {
+  0% { transform: translateY(0); opacity: 0; }
+  12% { opacity: .9; }
+  85% { opacity: .7; }
+  100% { transform: translateY(46px); opacity: 0; }
+}
+.stamp { opacity: 0; transform-box: fill-box; transform-origin: 50% 50%; transform: rotate(-7deg); pointer-events: none; }
+.stampTitle {
+  font-family: var(--punch-anton), Impact, sans-serif;
+  font-size: 34px;
+  letter-spacing: .06em;
+  filter: drop-shadow(0 0 8px rgba(255, 110, 30, .7));
+}
+.stampSub {
+  font-family: var(--punch-oswald), sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .62em;
+  fill: #ffcf8a;
 }
 
 /* Impact effects: every piece is hidden until the engine animates it with WAAPI. */
