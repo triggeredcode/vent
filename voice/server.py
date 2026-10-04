@@ -1,7 +1,8 @@
 """VENT local TTS server: Kokoro-82M on Apple Silicon via mlx-audio,
 plus an optional zero-shot cloned voice ("owner") via Chatterbox-Turbo (mlx-audio).
 
-OpenAI-compatible:  POST /v1/audio/speech  {model, voice, input, response_format, speed, stream?}
+OpenAI-compatible:  POST /v1/audio/speech  {model, voice, input, response_format, speed, stream?, style?}
+                    style: "calm" (default) | "fired" | "breathless"  (see styles.py)
 Health:             GET  /health
 """
 
@@ -29,6 +30,8 @@ import soundfile as sf
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel
+
+import styles
 
 MODEL_REPO = os.environ.get("VENT_TTS_MODEL", "mlx-community/Kokoro-82M-bf16")
 KOKORO_DEFAULT = "af_heart"
@@ -106,9 +109,7 @@ def synth_clone(text: str) -> np.ndarray:
     return a
 
 
-def synth(text: str, voice: str, speed: float) -> np.ndarray:
-    if voice == CLONE_VOICE:
-        return synth_clone(text)
+def _kokoro(text: str, voice: str, speed: float) -> np.ndarray:
     lang = voice[0]  # Kokoro convention: first letter of voice is the language code
     with _lock:
         parts = [np.asarray(r.audio, dtype=np.float32).reshape(-1)
@@ -116,6 +117,26 @@ def synth(text: str, voice: str, speed: float) -> np.ndarray:
     if not parts:
         return np.zeros(0, dtype=np.float32)
     return np.concatenate(parts)
+
+
+def synth(text: str, voice: str, speed: float, style: str = "calm") -> np.ndarray:
+    if style == "calm":  # unchanged pre-style path
+        return synth_clone(text) if voice == CLONE_VOICE else _kokoro(text, voice, speed)
+    clone = voice == CLONE_VOICE
+    text = styles.prepare_text(text, style, clone)
+    if clone:
+        audio = synth_clone(text)
+    elif style == "breathless":
+        # Kokoro hardly pauses at commas; it's cheap, so do one call per phrase and leave real gaps for breaths.
+        sp = styles.kokoro_speed(speed, style)
+        chunks = []
+        for phrase, gap in styles.kokoro_phrases(text):
+            chunks += [_kokoro(phrase, voice, sp), np.zeros(int(gap * SAMPLE_RATE), np.float32)]
+        audio = np.concatenate(chunks[:-1]) if chunks else np.zeros(0, np.float32)
+    else:
+        audio = _kokoro(text, voice, styles.kokoro_speed(speed, style))
+    # DSP runs outside the MLX lock (plain numpy/scipy).
+    return styles.apply(audio, style, clone, salt=text)
 
 
 def to_pcm16(a: np.ndarray) -> bytes:
@@ -160,6 +181,7 @@ class SpeechRequest(BaseModel):
     response_format: str | None = "wav"
     speed: float | None = 1.0
     stream: bool | None = False
+    style: str | None = "calm"  # "calm" | "fired" | "breathless"; anything else -> calm
 
 
 def _load_clone(load_model) -> None:
@@ -208,6 +230,8 @@ def _startup() -> None:
     except Exception as e:  # noqa: BLE001
         print(f"[vent-tts] Hindi warmup failed (non-fatal): {e}")
     _load_clone(load_model)
+    for st in ("fired", "breathless"):  # warm the style paths (scipy imports, first-call overhead)
+        synth("Okay, keep going.", KOKORO_DEFAULT, 1.0, st)
     DEFAULT_VOICE = _resolve_default()
     for k in ("default", "vent-calm", "calm"):
         ALIASES[k] = DEFAULT_VOICE
@@ -220,6 +244,7 @@ def _startup() -> None:
 def health():
     return {"ready": _ready, "model": MODEL_REPO, "engine": "kokoro-82m (mlx-audio)",
             "voice": DEFAULT_VOICE, "sample_rate": SAMPLE_RATE, "warmup_ms": _warm_ms,
+            "styles": list(styles.STYLES),
             "clone": {"voice": CLONE_VOICE, "loaded": _clone is not None, "model": CLONE_MODEL_REPO,
                       "reference": _clone_ref, "error": _clone_error}}
 
@@ -241,6 +266,7 @@ def speech(req: SpeechRequest):
     speed = float(req.speed or 1.0)
     speed = min(max(speed, 0.5), 2.0)
     fmt = (req.response_format or "wav").lower()
+    style = styles.normalize_style(req.style)
 
     if req.stream:
         if fmt not in ("wav", "pcm"):
@@ -250,15 +276,15 @@ def speech(req: SpeechRequest):
             if fmt == "wav":
                 yield streaming_wav_header()
             for sent in split_sentences(text):
-                yield to_pcm16(synth(sent, voice, speed))
+                yield to_pcm16(synth(sent, voice, speed, style))
 
         media = "audio/wav" if fmt == "wav" else "audio/L16;rate=24000;channels=1"
-        return StreamingResponse(gen(), media_type=media, headers={"X-Voice": voice})
+        return StreamingResponse(gen(), media_type=media, headers={"X-Voice": voice, "X-Style": style})
 
     t = time.perf_counter()
-    audio = synth(text, voice, speed)
+    audio = synth(text, voice, speed, style)
     synth_ms = (time.perf_counter() - t) * 1000
-    headers = {"X-Voice": voice, "X-Synth-Ms": f"{synth_ms:.0f}",
+    headers = {"X-Voice": voice, "X-Style": style, "X-Synth-Ms": f"{synth_ms:.0f}",
                "X-Audio-Seconds": f"{len(audio) / SAMPLE_RATE:.2f}"}
     if fmt == "mp3":
         return Response(mp3_bytes(audio), media_type="audio/mpeg", headers=headers)

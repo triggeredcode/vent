@@ -1648,6 +1648,7 @@ dependencies = [
     { name = "mlx-audio" },
     { name = "numpy" },
     { name = "pip" },
+    { name = "scipy" },
     { name = "soundfile" },
     { name = "uvicorn" },
 ]
@@ -1660,6 +1661,7 @@ requires-dist = [
     { name = "mlx-audio", specifier = ">=0.5.7" },
     { name = "numpy" },
     { name = "pip" },
+    { name = "scipy" },
     { name = "soundfile" },
     { name = "uvicorn", specifier = ">=0.30" },
 ]
