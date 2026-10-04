@@ -2,5 +2,8 @@ packages:
   - "."
 
 allowBuilds:
+  "@swc/core": true
+  esbuild: true
+  protobufjs: true
   sharp: false
   unrs-resolver: false
